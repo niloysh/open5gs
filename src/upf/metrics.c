@@ -461,6 +461,21 @@ void upf_metrics_final(void)
         }
         ogs_hash_destroy(metrics_hash_by_dnn);
     }
+    if(metrics_hash_by_seid) {
+        for (hi = ogs_hash_first(metrics_hash_by_seid); hi; hi = ogs_hash_next(hi)) {
+            upf_metric_key_by_seid_t *key =
+                (upf_metric_key_by_seid_t *)ogs_hash_this_key(hi);
+            //void *val = ogs_hash_this_val(hi);
+
+            ogs_hash_set(metrics_hash_by_seid, key, sizeof(*key), NULL);
+
+            ogs_free(key);
+            /* don't free val (metric itself) -
+             * it will be free'd by ogs_metrics_context_final() */
+            //ogs_free(val);
+        }
+        ogs_hash_destroy(metrics_hash_by_seid);
+    }
 
     ogs_metrics_context_final();
 }
