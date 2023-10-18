@@ -334,8 +334,8 @@ upf_metrics_spec_def_t upf_metrics_spec_def_by_seid[_UPF_METR_BY_SEID_MAX] = {
 /* Counters: */
 UPF_METR_BY_SEID_CTR_ENTRY(
     UPF_METR_CTR_GTP_PKTCNTN3UPF,
-    "fivegs_ep_n3_gtp_indatavolumeqosleveln3upf",
-    "Data volume of incoming GTP data packets per QoS level on the N3 interface")
+    "fivegs_ep_n3_gtp_pktcnt",
+    "Number of packets per SEID on the N3 interface")
 };
 void upf_metrics_init_by_seid(void);
 int upf_metrics_free_inst_by_seid(ogs_metrics_inst_t **inst);
@@ -346,13 +346,14 @@ typedef struct upf_metric_key_by_seid_s {
 
 void upf_metrics_init_by_seid(void)
 {
-    ogs_info("init_by_seid");
+    // ogs_info("init_by_seid");
     metrics_hash_by_seid = ogs_hash_make();
     ogs_assert(metrics_hash_by_seid);
 }
 void upf_metrics_inst_by_seid_add(uint64_t seid,
         upf_metric_type_by_seid_t t, int val)
 {
+    ogs_info("Incrementing metric be seid");
     ogs_metrics_inst_t *metrics = NULL;
     upf_metric_key_by_seid_t *seid_key;
 
@@ -401,16 +402,14 @@ void upf_metrics_init(void)
             upf_metrics_spec_def_by_cause, _UPF_METR_BY_CAUSE_MAX);
     upf_metrics_init_spec(ctx, upf_metrics_spec_by_dnn,
             upf_metrics_spec_def_by_dnn, _UPF_METR_BY_DNN_MAX);
-    // upf_metrics_init_spec(ctx, upf_metrics_spec_by_seid,
-    //         upf_metrics_spec_def_by_seid, _UPF_METR_BY_SEID_MAX);
+    upf_metrics_init_spec(ctx, upf_metrics_spec_by_seid,
+            upf_metrics_spec_def_by_seid, _UPF_METR_BY_SEID_MAX);
 
-    ogs_info("done init spec");
     upf_metrics_init_inst_global();
     upf_metrics_init_by_qfi();
     upf_metrics_init_by_cause();
     upf_metrics_init_by_dnn();
     upf_metrics_init_by_seid();
-    ogs_info("done init");
 }
 
 void upf_metrics_final(void)
