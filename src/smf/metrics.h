@@ -87,6 +87,16 @@ void smf_metrics_inst_by_5qi_add(
     ogs_plmn_id_t *plmn, ogs_s_nssai_t *snssai,
     uint8_t fiveqi, smf_metric_type_by_5qi_t t, int val);
 
+/* BY SLICE and SEID */
+typedef enum smf_metric_type_by_seid_s {
+    SMF_METR_GAUGE_SM_SEID_VOLUME = 0,
+    _SMF_METR_BY_SEID_MAX,
+} smf_metric_type_by_seid_t;
+
+void smf_metrics_inst_by_seid_add(
+    ogs_plmn_id_t *plmn, ogs_s_nssai_t *snssai,
+    uint64_t seid, smf_metric_type_by_seid_t t, int val);
+
 /* BY CAUSE */
 typedef enum smf_metric_type_by_cause_s {
     SMF_METR_CTR_SM_N4SESSIONESTABFAIL = 0,
