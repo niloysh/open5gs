@@ -494,7 +494,7 @@ void smf_metrics_inst_by_seid_add(ogs_plmn_id_t *plmn,
 
         ogs_assert(metrics);
         ogs_hash_set(metrics_hash_by_seid,
-                fiveqi_key, sizeof(*fiveqi_key), metrics);
+                seid_key, sizeof(*seid_key), metrics);
 
         if (s_nssai)
             ogs_free(s_nssai);
@@ -602,12 +602,15 @@ void smf_metrics_init(void)
             smf_metrics_spec_def_by_slice, _SMF_METR_BY_SLICE_MAX);
     smf_metrics_init_spec(ctx, smf_metrics_spec_by_5qi,
             smf_metrics_spec_def_by_5qi, _SMF_METR_BY_5QI_MAX);
+    smf_metrics_init_spec(ctx, smf_metrics_spec_by_seid,
+            smf_metrics_spec_def_by_seid, _SMF_METR_BY_SEID_MAX);
     smf_metrics_init_spec(ctx, smf_metrics_spec_by_cause,
             smf_metrics_spec_def_by_cause, _SMF_METR_BY_CAUSE_MAX);
 
     smf_metrics_init_inst_global();
     smf_metrics_init_by_slice();
     smf_metrics_init_by_5qi();
+    smf_metrics_init_by_seid();
     smf_metrics_init_by_cause();
 }
 
@@ -644,6 +647,21 @@ void smf_metrics_final(void)
             //ogs_free(val);
         }
         ogs_hash_destroy(metrics_hash_by_5qi);
+    }
+    if (metrics_hash_by_seid) {
+        for (hi = ogs_hash_first(metrics_hash_by_seid); hi; hi = ogs_hash_next(hi)) {
+            smf_metric_key_by_seid_t *key =
+                (smf_metric_key_by_seid_t *)ogs_hash_this_key(hi);
+            //void *val = ogs_hash_this_val(hi);
+
+            ogs_hash_set(metrics_hash_by_seid, key, sizeof(*key), NULL);
+
+            ogs_free(key);
+            /* don't free val (metric itself) -
+             * it will be free'd by ogs_metrics_context_final() */
+            //ogs_free(val);
+        }
+        ogs_hash_destroy(metrics_hash_by_seid);
     }
     if (metrics_hash_by_cause) {
         for (hi = ogs_hash_first(metrics_hash_by_cause); hi; hi = ogs_hash_next(hi)) {
