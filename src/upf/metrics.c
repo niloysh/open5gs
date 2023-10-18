@@ -334,8 +334,8 @@ upf_metrics_spec_def_t upf_metrics_spec_def_by_seid[_UPF_METR_BY_SEID_MAX] = {
 /* Counters: */
 UPF_METR_BY_SEID_CTR_ENTRY(
     UPF_METR_CTR_GTP_PKTCNTN3UPF,
-    "fivegs_ep_n3_gtp_pktcnt",
-    "Number of packets per SEID on the N3 interface")
+    "fivegs_ep_n3_gtp_datavolume",
+    "Data volume per SEID on the N3 interface")
 };
 void upf_metrics_init_by_seid(void);
 int upf_metrics_free_inst_by_seid(ogs_metrics_inst_t **inst);
