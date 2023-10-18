@@ -349,7 +349,7 @@ void upf_metrics_init_by_seid(void)
     metrics_hash_by_seid = ogs_hash_make();
     ogs_assert(metrics_hash_by_seid);
 }
-void upf_metrics_inst_by_seid_add(uint8_t seid,
+void upf_metrics_inst_by_seid_add(uint64_t seid,
         upf_metric_type_by_seid_t t, int val)
 {
     ogs_metrics_inst_t *metrics = NULL;
@@ -400,11 +400,14 @@ void upf_metrics_init(void)
             upf_metrics_spec_def_by_cause, _UPF_METR_BY_CAUSE_MAX);
     upf_metrics_init_spec(ctx, upf_metrics_spec_by_dnn,
             upf_metrics_spec_def_by_dnn, _UPF_METR_BY_DNN_MAX);
+    upf_metrics_init_spec(ctx, upf_metrics_spec_by_seid,
+            upf_metrics_spec_def_by_seid, _UPF_METR_BY_SPEC_MAX);
 
     upf_metrics_init_inst_global();
     upf_metrics_init_by_qfi();
     upf_metrics_init_by_cause();
     upf_metrics_init_by_dnn();
+    upf_metrics_init_by_seid();
 }
 
 void upf_metrics_final(void)
