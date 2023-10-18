@@ -227,7 +227,7 @@ static void _gtpv1_tun_recv_common_cb(
     upf_metrics_inst_global_inc(UPF_METR_GLOB_CTR_GTP_OUTDATAPKTN3UPF);
     upf_metrics_inst_by_qfi_add(pdr->qer->qfi,
         UPF_METR_CTR_GTP_OUTDATAVOLUMEQOSLEVELN3UPF, recvbuf->len);
-    upf_metrics_inst_by_seid_add(sess->upf_n4_seid, UPF_METR_CTR_GTP_PKTCNTN3UPF, 1);
+    // upf_metrics_inst_by_seid_add(sess->upf_n4_seid, UPF_METR_CTR_GTP_PKTCNTN3UPF, 1);
 #endif
 
     if (report.type.downlink_data_report) {
