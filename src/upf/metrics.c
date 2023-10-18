@@ -365,7 +365,7 @@ void upf_metrics_inst_by_seid_add(uint64_t seid,
             seid_key, sizeof(*seid_key));
 
     if (!metrics) {
-        char seid_str[4];
+        char seid_str[32];
         ogs_snprintf(seid_str, sizeof(seid_str), "%ld", seid);
 
         metrics = ogs_metrics_inst_new(upf_metrics_spec_by_seid[t],
