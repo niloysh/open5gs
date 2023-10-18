@@ -59,9 +59,14 @@ typedef enum upf_metric_type_by_dnn_s {
 void upf_metrics_inst_by_dnn_add(
     char *dnn, upf_metric_type_by_dnn_t t, int val);
 
+/* BY CAUSE */
+typedef enum upf_metric_type_by_cause_s {
+    UPF_METR_CTR_SM_N4SESSIONESTABFAIL = 0,
+    _UPF_METR_BY_CAUSE_MAX,
+} upf_metric_type_by_cause_t;
 
 /* BY SEID */
-typedef enum upf_metic_type_seid_s {
+typedef enum upf_metic_type_by_seid_s {
     UPF_METR_CTR_GTP_PKTCNTN3UPF = 0,
     _UPF_METR_BY_SEID_MAX,
 } upf_metric_type_by_seid_t;
