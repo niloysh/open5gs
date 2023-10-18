@@ -346,6 +346,7 @@ typedef struct upf_metric_key_by_seid_s {
 
 void upf_metrics_init_by_seid(void)
 {
+    ogs_info("init_by_seid");
     metrics_hash_by_seid = ogs_hash_make();
     ogs_assert(metrics_hash_by_seid);
 }
@@ -403,11 +404,13 @@ void upf_metrics_init(void)
     upf_metrics_init_spec(ctx, upf_metrics_spec_by_seid,
             upf_metrics_spec_def_by_seid, _UPF_METR_BY_SEID_MAX);
 
+    ogs_info("done init spec");
     upf_metrics_init_inst_global();
     upf_metrics_init_by_qfi();
     upf_metrics_init_by_cause();
     upf_metrics_init_by_dnn();
     upf_metrics_init_by_seid();
+    ogs_info("done init");
 }
 
 void upf_metrics_final(void)
