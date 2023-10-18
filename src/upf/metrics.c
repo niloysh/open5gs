@@ -366,7 +366,7 @@ void upf_metrics_inst_by_seid_add(uint64_t seid,
 
     if (!metrics) {
         char seid_str[4];
-        ogs_snprintf(seid_str, sizeof(seid_str), "%d", seid);
+        ogs_snprintf(seid_str, sizeof(seid_str), "%ld", seid);
 
         metrics = ogs_metrics_inst_new(upf_metrics_spec_by_seid[t],
                 upf_metrics_spec_def_by_seid->num_labels,
@@ -401,7 +401,7 @@ void upf_metrics_init(void)
     upf_metrics_init_spec(ctx, upf_metrics_spec_by_dnn,
             upf_metrics_spec_def_by_dnn, _UPF_METR_BY_DNN_MAX);
     upf_metrics_init_spec(ctx, upf_metrics_spec_by_seid,
-            upf_metrics_spec_def_by_seid, _UPF_METR_BY_SPEC_MAX);
+            upf_metrics_spec_def_by_seid, _UPF_METR_BY_SEID_MAX);
 
     upf_metrics_init_inst_global();
     upf_metrics_init_by_qfi();
@@ -467,12 +467,12 @@ void upf_metrics_final(void)
 
             ogs_hash_set(metrics_hash_by_seid, key, sizeof(*key), NULL);
 
-            ogs_free(key)
+            ogs_free(key);
             /* don't free val (metric itself) -
              * it will be free'd by ogs_metrics_context_final() */
             //ogs_free(val);
         }
-        ogs_hash_destroy(metrics_hash_by_seid)
+        ogs_hash_destroy(metrics_hash_by_seid);
     }
 
     ogs_metrics_context_final();
