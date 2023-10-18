@@ -61,7 +61,10 @@ void upf_metrics_inst_by_dnn_add(
 
 
 /* BY SEID */
-typedef enum upf_metic_type_seid_s {} upf_metric_type_by_seid_t;
+typedef enum upf_metic_type_seid_s {
+    UPF_METR_CTR_GTP_PKTCNTN3UPF = 0,
+    _UPF_METR_BY_SEID_MAX,
+} upf_metric_type_by_seid_t;
 
 void upf_metric_inst_by_seid_add(
     char* seid, upf_metric_type_by_seid_t t, int val);
