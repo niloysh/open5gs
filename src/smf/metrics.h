@@ -89,7 +89,7 @@ void smf_metrics_inst_by_5qi_add(
 
 /* BY SLICE and SEID */
 typedef enum smf_metric_type_by_seid_s {
-    SMF_METR_GAUGE_SM_SEID_VOLUME = 0,
+    SMF_METR_GAUGE_SM_SEID_SESSIONNBR = 0,
     _SMF_METR_BY_SEID_MAX,
 } smf_metric_type_by_seid_t;
 

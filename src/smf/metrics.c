@@ -426,9 +426,9 @@ ogs_hash_t *metrics_hash_by_seid = NULL;   /* hash table for SEID label */
 smf_metrics_spec_def_t smf_metrics_spec_def_by_seid[_SMF_METR_BY_SEID_MAX] = {
 /* Gauges: */
 SMF_METR_BY_SEID_GAUGE_ENTRY(
-    SMF_METR_GAUGE_SM_SEID_VOLUME,
-    "fivegs_smffunction_sm_seid_volume",
-    "Data volume per SEID at the SMF")
+    SMF_METR_GAUGE_SM_SEID_SESSIONNBR,
+    "fivegs_smffunction_sm_seid_session",
+    "Number of active sessions per SEID")
 };
 void smf_metrics_init_by_seid(void);
 int smf_metrics_free_inst_by_seid(ogs_metrics_inst_t **inst);

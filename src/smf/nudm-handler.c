@@ -357,8 +357,6 @@ bool smf_nudm_sdm_handle_get(smf_sess_t *sess, ogs_sbi_stream_t *stream,
     smf_metrics_inst_by_slice_add(&sess->plmn_id, &sess->s_nssai,
             SMF_METR_CTR_SM_PDUSESSIONCREATIONSUCC, 1);
 
-    smf_metrics_inst_by_seid_add(&sess->plmn_id, &sess->s_nssai, sess->smf_n4_seid,
-            SMF_METR_GAUGE_SM_SEID_VOLUME, 1);
     ogs_free(sendmsg.http.location);
 
     r = smf_sbi_discover_and_send(
