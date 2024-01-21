@@ -235,7 +235,7 @@ uint8_t smf_5gc_n4_handle_session_establishment_response(
     ogs_assert(up_f_seid);
     sess->upf_n4_seid = be64toh(up_f_seid->seid);
 
-    smf_metrics_inst_by_seid_add(&sess->plmn_id, &sess->s_nssai, sess->upf_n4_seid,
+    smf_metrics_inst_by_seid_add(&sess->serving_plmn_id, &sess->s_nssai, sess->upf_n4_seid,
                 SMF_METR_GAUGE_SM_SEID_SESSIONNBR, 1);
 
     return OGS_PFCP_CAUSE_REQUEST_ACCEPTED;
@@ -721,7 +721,7 @@ int smf_5gc_n4_handle_session_deletion_response(
         return status;
     }
 
-    smf_metrics_inst_by_seid_add(&sess->plmn_id, &sess->s_nssai, sess->upf_n4_seid,
+    smf_metrics_inst_by_seid_add(&sess->serving_plmn_id, &sess->s_nssai, sess->upf_n4_seid,
                 SMF_METR_GAUGE_SM_SEID_SESSIONNBR, -1);
 
     return status;
