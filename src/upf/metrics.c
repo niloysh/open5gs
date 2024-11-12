@@ -357,7 +357,7 @@ void upf_metrics_init_by_seid(void)
 void upf_metrics_inst_by_seid_add(uint64_t seid,
         upf_metric_type_by_seid_t t, int val)
 {
-    ogs_info("Incrementing metric be seid");
+    // ogs_info("Incrementing metric be seid");
     ogs_metrics_inst_t *metrics = NULL;
     upf_metric_key_by_seid_t *seid_key;
 
