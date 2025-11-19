@@ -275,6 +275,8 @@ typedef struct
     uint64_t peak_dl_bytes;
     time_t start_time;
     time_t timestamp;
+    bool pending_flush;
+    bool announced;
 } usage_report_per_flow_t;
 typedef struct
 {

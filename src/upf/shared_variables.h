@@ -14,6 +14,7 @@
 #endif
 
 EXTERN BTreeMap mymap INITIALIZER(NULL);
-EXTERN pthread_mutex_t ee_lock;
+
+
 
 #endif //OPEN5GS_SHARED_VARIABLES_H

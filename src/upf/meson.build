@@ -71,6 +71,7 @@ libupf_sources = files('''
     n4-handler.h
     btree.h
     shared_variables.h
+    delta_queue.h
     types.h
     decoder.h
     upf_prepare_data.h
@@ -109,6 +110,7 @@ libupf_sources = files('''
     handler.c
     response_builder.c
     send_data.c
+    delta_queue.c
 
 '''.split())
 

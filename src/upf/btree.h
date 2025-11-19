@@ -67,6 +67,6 @@ void btreemap_insert_str(BTreeMap map, const char *key, void *value);
 int str_compare(const void *a, const void *b);
 
 int type_u64_compare(const void *a, const void *b);
-
-
+void btreemap_free_helper(MapNode root, bool free_keys, bool free_values, void (*free_value_fn)(void *));
+void btreemap_free(BTreeMap map, bool free_key, bool free_values, void (*free_value_fn)(void *));
 #endif
