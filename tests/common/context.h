@@ -48,7 +48,9 @@ typedef struct test_context_s {
     ogs_list_t      ngap_list;      /* AMF NGAP IPv4 Server List */
     ogs_list_t      ngap_list6;     /* AMF NGAP IPv6 Server List */
     ogs_sockaddr_t  *ngap_addr;     /* AMF NGAP IPv4 Address */
+    ogs_sockaddr_t  *ngap2_addr;    /* OLD AMF NGAP IPv4 Address */
     ogs_sockaddr_t  *ngap_addr6;    /* AMF NGAP IPv6 Address */
+    ogs_sockaddr_t  *ngap2_addr6;   /* OLD AMF NGAP IPv6 Address */
 
     uint16_t        s1ap_port;      /* Default S1AP Port */
     ogs_list_t      s1ap_list;      /* MME S1AP IPv4 Server List */
@@ -65,7 +67,7 @@ typedef struct test_context_s {
     ogs_list_t      gtpc_list;      /* SMF GTPC Client List */
 
     /* 5G PLMN Support */
-    uint8_t num_of_plmn_support;
+    int num_of_plmn_support;
     struct {
         ogs_plmn_id_t plmn_id;
         int num_of_s_nssai;
@@ -73,7 +75,7 @@ typedef struct test_context_s {
     } plmn_support[OGS_MAX_NUM_OF_PLMN];
 
     /* Served EPC TAI */
-    uint8_t num_of_e_served_tai;
+    int num_of_e_served_tai;
     struct {
         ogs_eps_tai0_list_t list0;
         ogs_eps_tai1_list_t list1;
@@ -83,7 +85,7 @@ typedef struct test_context_s {
     ogs_eps_tai_t e_tai;
 
     /* Served 5GC TAI */
-    uint8_t num_of_nr_served_tai;
+    int num_of_nr_served_tai;
     struct {
         ogs_5gs_tai0_list_t list0;
         ogs_5gs_tai1_list_t list1;
@@ -175,7 +177,7 @@ typedef struct test_attach_request_param_s {
 typedef struct test_tau_request_param_s {
     struct {
     ED8(uint8_t ue_network_capability:1;,
-        uint8_t eps_bearer_context_status:1;,
+        uint8_t reserved:1;,
         uint8_t guti:1;,
         uint8_t last_visited_registered_tai:1;,
         uint8_t drx_parameter:1;,
@@ -198,6 +200,7 @@ typedef struct test_tau_request_param_s {
         uint8_t device_properties:1;,
         uint8_t spare2:6;)
     };
+    uint8_t eps_bearer_context_status;
 } __attribute__ ((packed)) test_tau_request_param_t;
 
 typedef struct test_service_request_param_s {
@@ -288,7 +291,7 @@ typedef struct test_esm_information_param_s {
 typedef struct test_ue_s {
     ogs_lnode_t     lnode;          /**< A node of list_t */
 
-    uint32_t ran_ue_ngap_id; /* gNB-UE-NGAP-ID received from gNB */
+    uint64_t ran_ue_ngap_id; /* gNB-UE-NGAP-ID received from gNB */
     uint64_t amf_ue_ngap_id; /* AMF-UE-NGAP-ID received from AMF */
     uint32_t enb_ue_s1ap_id; /* eNB-UE-S1AP-ID received from eNB */
     uint32_t mme_ue_s1ap_id; /* MME-UE-S1AP-ID received from MME */
@@ -513,6 +516,7 @@ void test_sess_remove_all(test_ue_t *test_ue);
 
 test_sess_t *test_sess_find_by_apn(
         test_ue_t *test_ue, char *apn, uint8_t rat_type);
+test_sess_t *test_sess_find_by_pti(test_ue_t *test_ue, uint8_t pti);
 test_sess_t *test_sess_find_by_psi(test_ue_t *test_ue, uint8_t psi);
 
 test_bearer_t *test_bearer_add(test_sess_t *sess, uint8_t ebi);
@@ -530,6 +534,7 @@ int test_db_remove_ue(test_ue_t *test_ue);
 
 bson_t *test_db_new_simple(test_ue_t *test_ue);
 bson_t *test_db_new_qos_flow(test_ue_t *test_ue);
+bson_t *test_db_new_qos_flow_bi_directional(test_ue_t *test_ue);
 bson_t *test_db_new_session(test_ue_t *test_ue);
 bson_t *test_db_new_ims(test_ue_t *test_ue);
 bson_t *test_db_new_slice_with_same_dnn(test_ue_t *test_ue);

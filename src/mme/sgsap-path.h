@@ -36,8 +36,7 @@ void sgsap_close(void);
 
 ogs_sock_t *sgsap_client(mme_vlr_t *vlr);
 
-int sgsap_send(ogs_sock_t *sock,
-        ogs_pkbuf_t *pkbuf, ogs_sockaddr_t *addr, uint16_t stream_no);
+int sgsap_send(ogs_sock_t *sock, ogs_pkbuf_t *pkbuf, uint16_t stream_no);
 
 int sgsap_send_to_vlr_with_sid(
         mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf, uint16_t stream_no);
@@ -45,6 +44,7 @@ int sgsap_send_to_vlr(mme_ue_t *mme_ue, ogs_pkbuf_t *pkbuf);
 
 int sgsap_send_location_update_request(mme_ue_t *mme_ue);
 int sgsap_send_tmsi_reallocation_complete(mme_ue_t *mme_ue);
+int sgsap_send_ue_activity_indication(mme_ue_t *mme_ue);
 int sgsap_send_detach_indication(mme_ue_t *mme_ue);
 int sgsap_send_mo_csfb_indication(mme_ue_t *mme_ue);
 int sgsap_send_paging_reject(mme_ue_t *mme_ue, uint8_t sgs_cause);

@@ -28,7 +28,7 @@
 /*******************************************************************************
  * This file had been created by nas-message.py script v0.2.0
  * Please do not modify this file but regenerate it via script.
- * Created on: 2023-03-04 20:50:00.898995 by acetcom
+ * Created on: 2024-01-21 18:47:47.837341 by acetcom
  * from 24501-h90.docx
  ******************************************************************************/
 
@@ -3560,7 +3560,7 @@ ogs_pkbuf_t *ogs_nas_5gmm_encode(ogs_nas_5gs_message_t *message)
 
     ogs_assert(message);
 
-    /* The Packet Buffer(ogs_pkbuf_t) for NAS message MUST make a HEADROOM. 
+    /* The Packet Buffer(ogs_pkbuf_t) for NAS message MUST make a HEADROOM.
      * When calculating AES_CMAC, we need to use the headroom of the packet. */
     pkbuf = ogs_pkbuf_alloc(NULL, OGS_MAX_SDU_LEN);
     if (!pkbuf) {
@@ -3730,7 +3730,7 @@ ogs_pkbuf_t *ogs_nas_5gsm_encode(ogs_nas_5gs_message_t *message)
 
     ogs_assert(message);
 
-    /* The Packet Buffer(ogs_pkbuf_t) for NAS message MUST make a HEADROOM. 
+    /* The Packet Buffer(ogs_pkbuf_t) for NAS message MUST make a HEADROOM.
      * When calculating AES_CMAC, we need to use the headroom of the packet. */
     pkbuf = ogs_pkbuf_alloc(NULL, OGS_MAX_SDU_LEN);
     if (!pkbuf) {

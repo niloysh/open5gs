@@ -74,7 +74,7 @@ void af_sbi_discover_and_send(
     ogs_assert(build);
 
     xact = ogs_sbi_xact_add(
-            &sess->sbi, service_type, discovery_option,
+            0, &sess->sbi, service_type, discovery_option,
             (ogs_sbi_build_f)build, sess, data);
     if (!xact) {
         ogs_error("af_sbi_discover_and_send() failed");
@@ -84,6 +84,7 @@ void af_sbi_discover_and_send(
     r = ogs_sbi_discover_and_send(xact);
     if (r != OGS_OK) {
         ogs_error("af_sbi_discover_and_send() failed");
+        ogs_sbi_xact_remove(xact);
         return;
     }
 }

@@ -42,7 +42,7 @@ static void test1_func(abts_case *tc, void *data)
     bson_t *doc = NULL;
 
     /* gNB connects to AMF */
-    ngap = testngap_client(AF_INET);
+    ngap = testngap_client(1, AF_INET);
     ABTS_PTR_NOTNULL(tc, ngap);
 
     /* gNB connects to UPF */
@@ -236,6 +236,29 @@ static void test1_func(abts_case *tc, void *data)
         ABTS_PTR_NOTNULL(tc, sendbuf);
         rv = testgnb_ngap_send(ngap, sendbuf);
         ABTS_INT_EQUAL(tc, OGS_OK, rv);
+    }
+
+    for (i = 0; i < NUM_OF_TEST_UE; i++) {
+        int target = (i + 1) % NUM_OF_TEST_UE;
+        char dst_ip[OGS_ADDRSTRLEN];
+        test_sess_t *dst_sess = NULL;
+
+        sess = test_sess_find_by_psi(test_ue[i], 5);
+        ogs_assert(sess);
+        qos_flow = test_qos_flow_find_by_qfi(sess, 1);
+        ogs_assert(qos_flow);
+
+        dst_sess = test_sess_find_by_psi(test_ue[target], 5);
+        ogs_assert(dst_sess);
+        inet_ntop(AF_INET, &dst_sess->ue_ip.addr,
+                dst_ip, sizeof(dst_ip));
+
+        rv = test_gtpu_send_ping(gtpu, qos_flow, dst_ip);
+        ABTS_INT_EQUAL(tc, OGS_OK, rv);
+
+        recvbuf = test_gtpu_read(gtpu);
+        ABTS_PTR_NOTNULL(tc, recvbuf);
+        ogs_pkbuf_free(recvbuf);
     }
 
     for (i = 0; i < NUM_OF_TEST_UE; i++) {

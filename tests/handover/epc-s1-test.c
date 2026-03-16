@@ -114,7 +114,8 @@ static void test1_func(abts_case *tc, void *data)
     sess->pdn_connectivity_param.pco = 1;
     sess->pdn_connectivity_param.request_type =
         OGS_NAS_EPS_REQUEST_TYPE_INITIAL;
-    esmbuf = testesm_build_pdn_connectivity_request(sess, false);
+    esmbuf = testesm_build_pdn_connectivity_request(
+            sess, false, OGS_NAS_EPS_PDN_TYPE_IPV4V6);
     ABTS_PTR_NOTNULL(tc, esmbuf);
 
     memset(&test_ue->attach_request_param,
@@ -392,7 +393,8 @@ static void test1_func(abts_case *tc, void *data)
     test_ue->tau_request_param.ue_network_capability = 1;
     test_ue->tau_request_param.last_visited_registered_tai = 1;
     test_ue->tau_request_param.drx_parameter = 1;
-    test_ue->tau_request_param.eps_bearer_context_status = 1;
+    test_ue->tau_request_param.eps_bearer_context_status =
+        0x60; /* EBI:5, EBI:6 */
     test_ue->tau_request_param.ms_network_capability = 1;
     test_ue->tau_request_param.tmsi_status = 1;
     test_ue->tau_request_param.mobile_station_classmark_2 = 1;
@@ -708,7 +710,8 @@ static void test2_func(abts_case *tc, void *data)
     sess->pdn_connectivity_param.pco = 1;
     sess->pdn_connectivity_param.request_type =
         OGS_NAS_EPS_REQUEST_TYPE_INITIAL;
-    esmbuf = testesm_build_pdn_connectivity_request(sess, false);
+    esmbuf = testesm_build_pdn_connectivity_request(
+            sess, false, OGS_NAS_EPS_PDN_TYPE_IPV4V6);
     ABTS_PTR_NOTNULL(tc, esmbuf);
 
     memset(&test_ue->attach_request_param,
@@ -1030,7 +1033,8 @@ static void test3_func(abts_case *tc, void *data)
     sess->pdn_connectivity_param.pco = 1;
     sess->pdn_connectivity_param.request_type =
         OGS_NAS_EPS_REQUEST_TYPE_INITIAL;
-    esmbuf = testesm_build_pdn_connectivity_request(sess, false);
+    esmbuf = testesm_build_pdn_connectivity_request(
+            sess, false, OGS_NAS_EPS_PDN_TYPE_IPV4V6);
     ABTS_PTR_NOTNULL(tc, esmbuf);
 
     memset(&test_ue->attach_request_param,
@@ -1187,6 +1191,38 @@ static void test3_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Receive MME configuration transfer */
+    recvbuf = testenb_s1ap_read(s1ap1);
+    ABTS_PTR_NOTNULL(tc, recvbuf);
+    tests1ap_recv(test_ue, recvbuf);
+
+    /* Send Handover Required */
+    sendbuf = test_s1ap_build_handover_required(
+            test_ue, S1AP_HandoverType_intralte,
+            S1AP_ENB_ID_PR_macroENB_ID, 0x43,
+            S1AP_Cause_PR_radioNetwork,
+            S1AP_CauseRadioNetwork_time_critical_handover);
+    ABTS_PTR_NOTNULL(tc, sendbuf);
+    rv = testenb_s1ap_send(s1ap1, sendbuf);
+    ABTS_INT_EQUAL(tc, OGS_OK, rv);
+
+    /* Receive Handover Request */
+    recvbuf = testenb_s1ap_read(s1ap2);
+    ABTS_PTR_NOTNULL(tc, recvbuf);
+    tests1ap_recv(test_ue, recvbuf);
+
+    /* Send Handover Failure */
+    sendbuf = test_s1ap_build_handover_failure(test_ue,
+            S1AP_Cause_PR_radioNetwork, S1AP_CauseRadioNetwork_unspecified);
+    ABTS_PTR_NOTNULL(tc, sendbuf);
+    rv = testenb_s1ap_send(s1ap2, sendbuf);
+    ABTS_INT_EQUAL(tc, OGS_OK, rv);
+
+    /* Receive UE Context Release Command */
+    recvbuf = testenb_s1ap_read(s1ap2);
+    ABTS_PTR_NOTNULL(tc, recvbuf);
+    tests1ap_recv(test_ue, recvbuf);
+
+    /* Receive Handover Preparation Failure */
     recvbuf = testenb_s1ap_read(s1ap1);
     ABTS_PTR_NOTNULL(tc, recvbuf);
     tests1ap_recv(test_ue, recvbuf);

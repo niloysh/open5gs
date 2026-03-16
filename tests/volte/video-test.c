@@ -57,7 +57,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_assert(test_ue);
 
     test_ue->e_cgi.cell_id = 0x1079baf;
-    test_ue->nas.ksi = 0;
+    test_ue->nas.ksi = OGS_NAS_KSI_NO_KEY_IS_AVAILABLE;
     test_ue->nas.value = OGS_NAS_ATTACH_TYPE_COMBINED_EPS_IMSI_ATTACH;
 
     test_ue->k_string = "465b5ce8b199b49faa5f0a2ee238a6bc";
@@ -97,7 +97,8 @@ static void test1_func(abts_case *tc, void *data)
     sess->pdn_connectivity_param.eit = 1;
     sess->pdn_connectivity_param.request_type =
         OGS_NAS_EPS_REQUEST_TYPE_INITIAL;
-    esmbuf = testesm_build_pdn_connectivity_request(sess, false);
+    esmbuf = testesm_build_pdn_connectivity_request(
+            sess, false, OGS_NAS_EPS_PDN_TYPE_IPV4V6);
     ABTS_PTR_NOTNULL(tc, esmbuf);
 
     memset(&test_ue->attach_request_param,
@@ -214,7 +215,8 @@ static void test1_func(abts_case *tc, void *data)
     sess->pdn_connectivity_param.pco = 1;
     sess->pdn_connectivity_param.request_type =
         OGS_NAS_EPS_REQUEST_TYPE_INITIAL;
-    esmbuf = testesm_build_pdn_connectivity_request(sess, true);
+    esmbuf = testesm_build_pdn_connectivity_request(
+            sess, true, OGS_NAS_EPS_PDN_TYPE_IPV4V6);
     ABTS_PTR_NOTNULL(tc, esmbuf);
     sendbuf = test_s1ap_build_uplink_nas_transport(test_ue, esmbuf);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -442,7 +444,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABSetupResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 9);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_setup_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -458,7 +460,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send E-RABSetupResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 10);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_setup_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -477,7 +479,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_msleep(100);
 
     /* Send GTP-U ICMP Packet */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 9);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     rv = test_gtpu_send_ping(gtpu, bearer, TEST_PING_IPV4);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -488,7 +490,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_pkbuf_free(recvbuf);
 
     /* Send GTP-U ICMP Packet */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 10);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     rv = test_gtpu_send_ping(gtpu, bearer, TEST_PING_IPV4);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -500,7 +502,7 @@ static void test1_func(abts_case *tc, void *data)
 
     /* Send Bearer resource modification request */
     sess->pti = 20;
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 9);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     esmbuf = testesm_build_bearer_resource_modification_request(
             bearer, OGS_GTP2_TFT_CODE_DELETE_PACKET_FILTERS_FROM_EXISTING, 0,
@@ -521,7 +523,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABReleaseResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 9);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_release_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -529,7 +531,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send Deactivate EPS bearer context accept */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 9);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     esmbuf = testesm_build_deactivate_eps_bearer_context_accept(bearer);
     ABTS_PTR_NOTNULL(tc, esmbuf);
@@ -557,7 +559,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABReleaseResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 10);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_release_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -565,7 +567,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send Deactivate EPS bearer context accept */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 10);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     esmbuf = testesm_build_deactivate_eps_bearer_context_accept(bearer);
     ABTS_PTR_NOTNULL(tc, esmbuf);
@@ -604,7 +606,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABSetupResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 11);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_setup_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -620,7 +622,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send E-RABSetupResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 12);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_setup_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -639,7 +641,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_msleep(100);
 
     /* Send GTP-U ICMP Packet */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 11);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     rv = test_gtpu_send_ping(gtpu, bearer, TEST_PING_IPV4);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -650,7 +652,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_pkbuf_free(recvbuf);
 
     /* Send GTP-U ICMP Packet */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 12);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     rv = test_gtpu_send_ping(gtpu, bearer, TEST_PING_IPV4);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -662,7 +664,7 @@ static void test1_func(abts_case *tc, void *data)
 
     /* Send Bearer resource modification request */
     sess->pti = 30;
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 11);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     esmbuf = testesm_build_bearer_resource_modification_request(
             bearer, OGS_GTP2_TFT_CODE_DELETE_PACKET_FILTERS_FROM_EXISTING, 0,
@@ -683,7 +685,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABReleaseResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 11);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_release_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -691,7 +693,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send Deactivate EPS bearer context accept */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 11);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     esmbuf = testesm_build_deactivate_eps_bearer_context_accept(bearer);
     ABTS_PTR_NOTNULL(tc, esmbuf);
@@ -719,7 +721,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABReleaseResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 12);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_release_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -727,7 +729,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send Deactivate EPS bearer context accept */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 12);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     esmbuf = testesm_build_deactivate_eps_bearer_context_accept(bearer);
     ABTS_PTR_NOTNULL(tc, esmbuf);
@@ -766,7 +768,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABSetupResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 13);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_setup_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -782,7 +784,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send E-RABSetupResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 14);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_setup_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -801,7 +803,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_msleep(100);
 
     /* Send GTP-U ICMP Packet */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 13);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     rv = test_gtpu_send_ping(gtpu, bearer, TEST_PING_IPV4);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -812,7 +814,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_pkbuf_free(recvbuf);
 
     /* Send GTP-U ICMP Packet */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 14);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     rv = test_gtpu_send_ping(gtpu, bearer, TEST_PING_IPV4);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -824,7 +826,7 @@ static void test1_func(abts_case *tc, void *data)
 
     /* Send Bearer resource modification request */
     sess->pti = 40;
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 13);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     esmbuf = testesm_build_bearer_resource_modification_request(
             bearer, OGS_GTP2_TFT_CODE_DELETE_PACKET_FILTERS_FROM_EXISTING, 0,
@@ -845,7 +847,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABReleaseResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 13);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_release_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -853,7 +855,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send Deactivate EPS bearer context accept */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 13);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     esmbuf = testesm_build_deactivate_eps_bearer_context_accept(bearer);
     ABTS_PTR_NOTNULL(tc, esmbuf);
@@ -881,7 +883,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABReleaseResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 14);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_release_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -889,7 +891,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send Deactivate EPS bearer context accept */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 14);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     esmbuf = testesm_build_deactivate_eps_bearer_context_accept(bearer);
     ABTS_PTR_NOTNULL(tc, esmbuf);
@@ -928,7 +930,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABSetupResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 15);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_setup_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -944,7 +946,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send E-RABSetupResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_setup_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -963,7 +965,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_msleep(100);
 
     /* Send GTP-U ICMP Packet */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 15);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     rv = test_gtpu_send_ping(gtpu, bearer, TEST_PING_IPV4);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -974,7 +976,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_pkbuf_free(recvbuf);
 
     /* Send GTP-U ICMP Packet */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     rv = test_gtpu_send_ping(gtpu, bearer, TEST_PING_IPV4);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -986,7 +988,7 @@ static void test1_func(abts_case *tc, void *data)
 
     /* Send Bearer resource modification request */
     sess->pti = 50;
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 15);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     esmbuf = testesm_build_bearer_resource_modification_request(
             bearer, OGS_GTP2_TFT_CODE_DELETE_PACKET_FILTERS_FROM_EXISTING, 0,
@@ -1007,7 +1009,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABReleaseResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 15);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_release_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -1015,7 +1017,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send Deactivate EPS bearer context accept */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 15);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     esmbuf = testesm_build_deactivate_eps_bearer_context_accept(bearer);
     ABTS_PTR_NOTNULL(tc, esmbuf);
@@ -1043,7 +1045,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABReleaseResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_release_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -1051,7 +1053,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send Deactivate EPS bearer context accept */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     esmbuf = testesm_build_deactivate_eps_bearer_context_accept(bearer);
     ABTS_PTR_NOTNULL(tc, esmbuf);
@@ -1090,7 +1092,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABSetupResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_setup_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -1106,7 +1108,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send E-RABSetupResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 9);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_setup_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -1125,7 +1127,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_msleep(100);
 
     /* Send GTP-U ICMP Packet */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     rv = test_gtpu_send_ping(gtpu, bearer, TEST_PING_IPV4);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -1136,7 +1138,7 @@ static void test1_func(abts_case *tc, void *data)
     ogs_pkbuf_free(recvbuf);
 
     /* Send GTP-U ICMP Packet */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 9);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     rv = test_gtpu_send_ping(gtpu, bearer, TEST_PING_IPV4);
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
@@ -1148,7 +1150,7 @@ static void test1_func(abts_case *tc, void *data)
 
     /* Send Bearer resource modification request */
     sess->pti = 55;
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     esmbuf = testesm_build_bearer_resource_modification_request(
             bearer, OGS_GTP2_TFT_CODE_DELETE_PACKET_FILTERS_FROM_EXISTING, 0,
@@ -1169,7 +1171,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABReleaseResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_release_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -1177,7 +1179,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send Deactivate EPS bearer context accept */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 7);
     ogs_assert(bearer);
     esmbuf = testesm_build_deactivate_eps_bearer_context_accept(bearer);
     ABTS_PTR_NOTNULL(tc, esmbuf);
@@ -1205,7 +1207,7 @@ static void test1_func(abts_case *tc, void *data)
             test_ue->s1ap_procedure_code);
 
     /* Send E-RABReleaseResponse */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 9);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     sendbuf = test_s1ap_build_e_rab_release_response(bearer);
     ABTS_PTR_NOTNULL(tc, sendbuf);
@@ -1213,7 +1215,7 @@ static void test1_func(abts_case *tc, void *data)
     ABTS_INT_EQUAL(tc, OGS_OK, rv);
 
     /* Send Deactivate EPS bearer context accept */
-    bearer = test_bearer_find_by_ue_ebi(test_ue, 9);
+    bearer = test_bearer_find_by_ue_ebi(test_ue, 8);
     ogs_assert(bearer);
     esmbuf = testesm_build_deactivate_eps_bearer_context_accept(bearer);
     ABTS_PTR_NOTNULL(tc, esmbuf);

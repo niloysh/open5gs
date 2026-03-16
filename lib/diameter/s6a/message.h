@@ -1,5 +1,5 @@
-/*
- * Copyright (C) 2019 by Sukchan Lee <acetcom@gmail.com>
+/* 3GPP TS 29.272 S6a
+ * Copyright (C) 2019-2025 by Sukchan Lee <acetcom@gmail.com>
  *
  * This file is part of Open5GS.
  *
@@ -36,6 +36,7 @@ extern "C" {
 #define OGS_DIAM_S6A_AVP_CODE_ALL_APN_CONFIG_INC_IND    (1428)
 #define OGS_DIAM_S6A_AVP_CODE_APN_CONFIGURATION         (1430)
 #define OGS_DIAM_S6A_AVP_CODE_MIP_HOME_AGENT_ADDRESS    (334)
+#define OGS_DIAM_S6A_AVP_CODE_MIP_HOME_AGENT_HOST       (348)
 #define OGS_DIAM_S6A_AVP_CODE_SERVED_PARTY_IP_ADDRESS   (848)
 
 #define OGS_DIAM_S6A_RAT_TYPE_WLAN                      0
@@ -70,7 +71,7 @@ extern "C" {
 
 #define OGS_DIAM_S6A_CT_MME_UPDATE_PROCEDURE            (0)
 #define OGS_DIAM_S6A_CT_SGSN_UPDATE_PROCEDURE           (1)
-#define OGS_DIAM_S6A_CT_SUBSCRIPTION_WITHDRAWL          (2)
+#define OGS_DIAM_S6A_CT_SUBSCRIPTION_WITHDRAWAL          (2)
 #define OGS_DIAM_S6A_CT_UPDATE_PROCEDURE_IWF            (3)
 #define OGS_DIAM_S6A_CT_INITIAL_ATTACH_PROCEDURE        (4)
 
@@ -87,6 +88,11 @@ extern "C" {
 #define OGS_DIAM_S6A_SUBDATA_RAU_TAU_TIMER              (1 << 9)
 #define OGS_DIAM_S6A_SUBDATA_OP_DET_BARRING             (1 << 10)
 #define OGS_DIAM_S6A_SUBDATA_ALL                        0xFFFFFFFF
+
+/* 7.3.162 SMS-Register-Request, see also 3GPP TS 23.272 C.8 "Registration of MME for SMS" */
+#define OGS_DIAM_S6A_SMS_REGISTER_REQUIRED              0
+#define OGS_DIAM_S6A_SMS_REGISTER_NOT_PREFERRED         1
+#define OGS_DIAM_S6A_SMS_REGISTER_NO_PREFERENCE         2
 
 extern struct dict_object *ogs_diam_s6a_application;
 
@@ -144,6 +150,9 @@ extern struct dict_object *ogs_diam_s6a_pdn_gw_allocation_type;
 extern struct dict_object *ogs_diam_s6a_vplmn_dynamic_address_allowed;
 extern struct dict_object *ogs_diam_s6a_eps_location_information;
 extern struct dict_object *ogs_diam_s6a_mme_location_information;
+extern struct dict_object *ogs_diam_s6a_eps_user_state;
+extern struct dict_object *ogs_diam_s6a_mme_user_state;
+extern struct dict_object *ogs_diam_s6a_user_state;
 extern struct dict_object *ogs_diam_s6a_e_utran_cell_global_identity;
 extern struct dict_object *ogs_diam_s6a_tracking_area_identity;
 extern struct dict_object *ogs_diam_s6a_age_of_location_information;
@@ -154,6 +163,12 @@ extern struct dict_object *ogs_diam_s6a_software_version;
 
 extern struct dict_object *ogs_diam_s6a_msisdn;
 extern struct dict_object *ogs_diam_s6a_a_msisdn;
+
+extern struct dict_object *ogs_diam_s6a_sms_register_request;
+
+extern struct dict_object *ogs_diam_s6a_supported_features;
+extern struct dict_object *ogs_diam_s6a_feature_list_id;
+extern struct dict_object *ogs_diam_s6a_feature_list;
 
 typedef struct ogs_diam_e_utran_vector_s {
     uint8_t                 xres[OGS_MAX_RES_LEN];

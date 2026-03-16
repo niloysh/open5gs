@@ -3,7 +3,7 @@ ARG tag=latest
 ARG username=acetcom
 FROM ${username}/${dist}-${tag}-open5gs-base
 
-MAINTAINER Sukchan Lee <acetcom@gmail.com>
+LABEL org.opencontainers.image.authors="Sukchan Lee <acetcom@gmail.com>"
 
 RUN apt-get update && \
     apt-get upgrade -y && \
@@ -27,7 +27,7 @@ RUN apt-get update && \
 COPY setup.sh /root
 
 ARG username=acetcom
-RUN useradd -m --uid=1000 ${username} && \
+RUN useradd -m --uid=2000 ${username} && \
     echo "${username} ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/${username} && \
     chmod 0440 /etc/sudoers.d/${username}
 

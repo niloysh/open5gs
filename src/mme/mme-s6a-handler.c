@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 by Sukchan Lee <acetcom@gmail.com>
+ * Copyright (C) 2019-2024 by Sukchan Lee <acetcom@gmail.com>
  *
  * This file is part of Open5GS.
  *
@@ -33,13 +33,12 @@
 static uint8_t emm_cause_from_diameter(
                 const uint32_t *dia_err, const uint32_t *dia_exp_err);
 
-static uint8_t mme_ue_session_from_slice_data(mme_ue_t *mme_ue, 
+static uint8_t mme_ue_session_from_slice_data(mme_ue_t *mme_ue,
     ogs_slice_data_t *slice_data);
 
 uint8_t mme_s6a_handle_aia(
         mme_ue_t *mme_ue, ogs_diam_s6a_message_t *s6a_message)
 {
-    int r;
     ogs_diam_s6a_aia_message_t *aia_message = NULL;
     ogs_diam_e_utran_vector_t *e_utran_vector = NULL;
 
@@ -64,12 +63,12 @@ uint8_t mme_s6a_handle_aia(
 
     CLEAR_MME_UE_TIMER(mme_ue->t3460);
 
-    if (mme_ue->nas_eps.ksi == OGS_NAS_KSI_NO_KEY_IS_AVAILABLE)
-        mme_ue->nas_eps.ksi = 0;
+    if (mme_ue->nas_eps.mme.ksi < (OGS_NAS_KSI_NO_KEY_IS_AVAILABLE - 1))
+        mme_ue->nas_eps.mme.ksi++;
+    else
+        mme_ue->nas_eps.mme.ksi = 0;
 
-    r = nas_eps_send_authentication_request(mme_ue);
-    ogs_expect(r == OGS_OK);
-    ogs_assert(r != OGS_ERROR);
+    mme_ue->nas_eps.ue.ksi = mme_ue->nas_eps.mme.ksi;
 
     return OGS_NAS_EMM_CAUSE_REQUEST_ACCEPTED;
 }
@@ -118,10 +117,39 @@ uint8_t mme_s6a_handle_ula(
             return OGS_NAS_EMM_CAUSE_PROTOCOL_ERROR_UNSPECIFIED;
         }
     } else if (mme_ue->nas_eps.type == MME_EPS_TYPE_TAU_REQUEST) {
-        r = nas_eps_send_tau_accept(mme_ue,
-                S1AP_ProcedureCode_id_InitialContextSetup);
-        ogs_expect(r == OGS_OK);
-        ogs_assert(r != OGS_ERROR);
+        if (!SESSION_CONTEXT_IS_AVAILABLE(mme_ue)) {
+            ogs_warn("No PDN Connection : UE[%s]", mme_ue->imsi_bcd);
+            return OGS_NAS_EMM_CAUSE_UE_IDENTITY_CANNOT_BE_DERIVED_BY_THE_NETWORK;
+        }
+
+        if (!ACTIVE_EPS_BEARERS_IS_AVAIABLE(mme_ue)) {
+            ogs_warn("No active EPS bearers : IMSI[%s]", mme_ue->imsi_bcd);
+            return OGS_NAS_EMM_CAUSE_NO_EPS_BEARER_CONTEXT_ACTIVATED;
+        }
+
+        /* Determine S1AP procedure and store it for reuse */
+        mme_ue->tracking_area_update_accept_proc =
+            S1AP_ProcedureCode_id_InitialContextSetup;
+
+        /* Update CSMAP from Tracking area update request */
+        mme_ue->csmap = mme_csmap_find_by_tai(&mme_ue->tai);
+        if (mme_ue->csmap &&
+            mme_ue->network_access_mode ==
+                OGS_NETWORK_ACCESS_MODE_PACKET_AND_CIRCUIT &&
+            (mme_ue->nas_eps.update.value ==
+             OGS_NAS_EPS_UPDATE_TYPE_COMBINED_TA_LA_UPDATING ||
+             mme_ue->nas_eps.update.value ==
+             OGS_NAS_EPS_UPDATE_TYPE_COMBINED_TA_LA_UPDATING_WITH_IMSI_ATTACH)) {
+
+            ogs_assert(OGS_OK == sgsap_send_location_update_request(mme_ue));
+
+        } else {
+            ogs_info("[%s] TAU accept(Diameter ULA)", mme_ue->imsi_bcd);
+            r = nas_eps_send_tau_accept(mme_ue,
+                    mme_ue->tracking_area_update_accept_proc);
+            ogs_expect(r == OGS_OK);
+            ogs_assert(r != OGS_ERROR);
+        }
     } else {
         ogs_error("Invalid Type[%d]", mme_ue->nas_eps.type);
         return OGS_NAS_EMM_CAUSE_PROTOCOL_ERROR_UNSPECIFIED;
@@ -208,7 +236,6 @@ void mme_s6a_handle_clr(mme_ue_t *mme_ue, ogs_diam_s6a_message_t *s6a_message)
     clr_message = &s6a_message->clr_message;
     ogs_assert(clr_message);
 
-    mme_ue = mme_ue_cycle(mme_ue);
     if (!mme_ue) {
         ogs_warn("UE(mme-ue) context has already been removed");
         return;
@@ -253,7 +280,7 @@ void mme_s6a_handle_clr(mme_ue_t *mme_ue, ogs_diam_s6a_message_t *s6a_message)
     ogs_debug("    OGS_NAS_EPS TYPE[%d]", mme_ue->nas_eps.type);
 
     switch (clr_message->cancellation_type) {
-    case OGS_DIAM_S6A_CT_SUBSCRIPTION_WITHDRAWL:
+    case OGS_DIAM_S6A_CT_SUBSCRIPTION_WITHDRAWAL:
         mme_ue->detach_type = MME_DETACH_TYPE_HSS_EXPLICIT;
 
         /*
@@ -271,35 +298,53 @@ void mme_s6a_handle_clr(mme_ue_t *mme_ue, ogs_diam_s6a_message_t *s6a_message)
             r = nas_eps_send_detach_request(mme_ue);
             ogs_expect(r == OGS_OK);
             ogs_assert(r != OGS_ERROR);
-            if (MME_P_TMSI_IS_AVAILABLE(mme_ue)) {
+            if (MME_CURRENT_P_TMSI_IS_AVAILABLE(mme_ue)) {
                 ogs_assert(OGS_OK == sgsap_send_detach_indication(mme_ue));
             } else {
-                mme_send_delete_session_or_detach(mme_ue);
+                enb_ue_t *enb_ue = enb_ue_find_by_id(mme_ue->enb_ue_id);
+                if (enb_ue)
+                    mme_send_delete_session_or_detach(enb_ue, mme_ue);
+                else
+                    ogs_error("ENB-S1 Context has already been removed");
             }
         }
         break;
     case OGS_DIAM_S6A_CT_MME_UPDATE_PROCEDURE:
+    case OGS_DIAM_S6A_CT_SGSN_UPDATE_PROCEDURE:
         mme_ue->detach_type = MME_DETACH_TYPE_HSS_IMPLICIT;
+
+        /* 3GPP TS 23.401 D.3.5.5 8), 3GPP TS 23.060 6.9.1.2.2 8):
+         * "When the timer described in step 2 is running, the MM and PDP/EPS
+         * Bearer Contexts and any affected S-GW resources are removed when the
+         * timer expires and the SGSN received a Cancel Location".
+         */
+        if (mme_ue->gn.t_gn_holding->running) {
+            ogs_debug("Gn Holding Timer is running, delay removing UE resources");
+            break;
+        }
 
         /*
          * There is no need to send NAS or S1AP message to the UE.
          * So, we don't have to check whether UE is IDLE or not.
          */
-        if (MME_P_TMSI_IS_AVAILABLE(mme_ue)) {
+        if (MME_CURRENT_P_TMSI_IS_AVAILABLE(mme_ue)) {
             ogs_assert(OGS_OK == sgsap_send_detach_indication(mme_ue));
         } else {
-            mme_send_delete_session_or_detach(mme_ue);
+            enb_ue_t *enb_ue = enb_ue_find_by_id(mme_ue->enb_ue_id);
+            if (enb_ue)
+                mme_send_delete_session_or_detach(enb_ue, mme_ue);
+            else
+                ogs_error("ENB-S1 Context has already been removed");
         }
         break;
     default:
-        ogs_fatal("Unsupported Cancellation-Type [%d]",
+        ogs_error("Unsupported Cancellation-Type [%d]",
             clr_message->cancellation_type);
-        ogs_assert_if_reached();
         break;
     }
 }
 
-static uint8_t mme_ue_session_from_slice_data(mme_ue_t *mme_ue, 
+static uint8_t mme_ue_session_from_slice_data(mme_ue_t *mme_ue,
     ogs_slice_data_t *slice_data)
 {
     int i;
@@ -331,8 +376,8 @@ static uint8_t mme_ue_session_from_slice_data(mme_ue_t *mme_ue,
                 ogs_free(mme_ue->session[i].name);
             break;
         }
-        memcpy(&mme_ue->session[i].paa, &slice_data->session[i].paa,
-                sizeof(mme_ue->session[i].paa));
+        memcpy(&mme_ue->session[i].ue_ip, &slice_data->session[i].ue_ip,
+                sizeof(mme_ue->session[i].ue_ip));
 
         memcpy(&mme_ue->session[i].qos, &slice_data->session[i].qos,
                 sizeof(mme_ue->session[i].qos));
@@ -360,7 +405,7 @@ static uint8_t emm_cause_from_diameter(
     if (dia_exp_err) {
         switch (*dia_exp_err) {
         case OGS_DIAM_S6A_ERROR_USER_UNKNOWN:                   /* 5001 */
-            return OGS_NAS_EMM_CAUSE_PLMN_NOT_ALLOWED;
+            return OGS_NAS_EMM_CAUSE_EPS_SERVICES_AND_NON_EPS_SERVICES_NOT_ALLOWED;
         case OGS_DIAM_S6A_ERROR_UNKNOWN_EPS_SUBSCRIPTION:       /* 5420 */
             /* FIXME: Error diagnostic? */
             return OGS_NAS_EMM_CAUSE_NO_SUITABLE_CELLS_IN_TRACKING_AREA;

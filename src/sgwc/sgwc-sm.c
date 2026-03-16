@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 by Sukchan Lee <acetcom@gmail.com>
+ * Copyright (C) 2019,2026 by Sukchan Lee <acetcom@gmail.com>
  *
  * This file is part of Open5GS.
  *
@@ -89,22 +89,11 @@ void sgwc_state_operational(ogs_fsm_t *s, sgwc_event_t *e)
         ogs_assert(e);
         recvbuf = e->pkbuf;
         ogs_assert(recvbuf);
+        pfcp_message = e->pfcp_message;
+        ogs_assert(pfcp_message);
         pfcp_node = e->pfcp_node;
         ogs_assert(pfcp_node);
         ogs_assert(OGS_FSM_STATE(&pfcp_node->sm));
-
-        /*
-         * Issue #1911
-         *
-         * Because ogs_pfcp_message_t is over 80kb in size,
-         * it can cause stack overflow.
-         * To avoid this, the pfcp_message structure uses heap memory.
-         */
-        if ((pfcp_message = ogs_pfcp_parse_msg(recvbuf)) == NULL) {
-            ogs_error("ogs_pfcp_parse_msg() failed");
-            ogs_pkbuf_free(recvbuf);
-            break;
-        }
 
         rv = ogs_pfcp_xact_receive(pfcp_node, &pfcp_message->h, &pfcp_xact);
         if (rv != OGS_OK) {
@@ -113,8 +102,7 @@ void sgwc_state_operational(ogs_fsm_t *s, sgwc_event_t *e)
             break;
         }
 
-        e->pfcp_message = pfcp_message;
-        e->pfcp_xact = pfcp_xact;
+        e->pfcp_xact_id = pfcp_xact ? pfcp_xact->id : OGS_INVALID_POOL_ID;
 
         e->gtp_message = NULL;
         if (pfcp_xact->gtpbuf) {
@@ -163,17 +151,17 @@ void sgwc_state_operational(ogs_fsm_t *s, sgwc_event_t *e)
             break;
         }
 
-        if (gtp_message.h.teid_presence && gtp_message.h.teid != 0) {
+        if (gtp_message.h.teid_presence && gtp_message.h.teid != 0)
             /* Cause is not "Context not found" */
             sgwc_ue = sgwc_ue_find_by_teid(gtp_message.h.teid);
-        } else if (gtp_xact->local_teid) { /* rx no TEID or TEID=0 */
+
+        if (!sgwc_ue && gtp_xact->local_teid) /* rx no TEID or TEID=0 */
             /* 3GPP TS 29.274 5.5.2: we receive TEID=0 under some
              * conditions, such as cause "Session context not found". In those
              * cases, we still want to identify the local session which
              * originated the message, so try harder by using the TEID we
              * locally stored in xact when sending the original request: */
             sgwc_ue = sgwc_ue_find_by_teid(gtp_xact->local_teid);
-        }
 
         switch(gtp_message.h.type) {
         case OGS_GTP2_ECHO_REQUEST_TYPE:
@@ -262,16 +250,16 @@ void sgwc_state_operational(ogs_fsm_t *s, sgwc_event_t *e)
             break;
         }
 
-        if (gtp_message.h.teid_presence && gtp_message.h.teid != 0) {
+        if (gtp_message.h.teid_presence && gtp_message.h.teid != 0)
             sess = sgwc_sess_find_by_teid(gtp_message.h.teid);
-        } else if (gtp_xact->local_teid) { /* rx no TEID or TEID=0 */
+
+        if (!sess && gtp_xact->local_teid) /* rx no TEID or TEID=0 */
             /* 3GPP TS 29.274 5.5.2: we receive TEID=0 under some
              * conditions, such as cause "Session context not found". In those
              * cases, we still want to identify the local session which
              * originated the message, so try harder by using the TEID we
              * locally stored in xact when sending the original request: */
             sess = sgwc_sess_find_by_teid(gtp_xact->local_teid);
-        }
 
         switch(gtp_message.h.type) {
         case OGS_GTP2_ECHO_REQUEST_TYPE:

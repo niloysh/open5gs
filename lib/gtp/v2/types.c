@@ -26,12 +26,20 @@
 int16_t ogs_gtp2_parse_bearer_qos(
     ogs_gtp2_bearer_qos_t *bearer_qos, ogs_tlv_octet_t *octet)
 {
-    ogs_gtp2_bearer_qos_t *source = (ogs_gtp2_bearer_qos_t *)octet->data;
+    ogs_gtp2_bearer_qos_t *source = NULL;
     int16_t size = 0;
 
     ogs_assert(bearer_qos);
     ogs_assert(octet);
-    ogs_assert(octet->len == GTP2_BEARER_QOS_LEN);
+
+    /* Validate IE length instead of asserting */
+    if (octet->len != GTP2_BEARER_QOS_LEN) {
+        ogs_error("Invalid Bearer QoS IE length [%u], expected [%u]",
+                octet->len, GTP2_BEARER_QOS_LEN);
+        return 0;
+    }
+
+    source = (ogs_gtp2_bearer_qos_t *)octet->data;
 
     memset(bearer_qos, 0, sizeof(ogs_gtp2_bearer_qos_t));
 
@@ -201,12 +209,19 @@ uint64_t ogs_gtp2_qos_to_kbps(uint8_t br, uint8_t extended, uint8_t extended2)
 int16_t ogs_gtp2_parse_flow_qos(
     ogs_gtp2_flow_qos_t *flow_qos, ogs_tlv_octet_t *octet)
 {
-    ogs_gtp2_flow_qos_t *source = (ogs_gtp2_flow_qos_t *)octet->data;
+    ogs_gtp2_flow_qos_t *source = NULL;
     int16_t size = 0;
 
     ogs_assert(flow_qos);
     ogs_assert(octet);
-    ogs_assert(octet->len == GTP2_FLOW_QOS_LEN);
+
+    if (octet->len != GTP2_FLOW_QOS_LEN) {
+        ogs_error("Invalid Flow QoS IE length [%u], expected [%u]",
+                octet->len, GTP2_FLOW_QOS_LEN);
+        return 0;
+    }
+
+    source = (ogs_gtp2_flow_qos_t *)octet->data;
 
     memset(flow_qos, 0, sizeof(ogs_gtp2_flow_qos_t));
 
@@ -289,7 +304,11 @@ int16_t ogs_gtp2_parse_tft(ogs_gtp2_tft_t *tft, ogs_tlv_octet_t *octet)
 
     memset(tft, 0, sizeof(ogs_gtp2_tft_t));
 
-    ogs_assert(size+sizeof(tft->flags) <= octet->len);
+    if (size + (int)sizeof(tft->flags) > octet->len) {
+        ogs_error("TFT: size[%d]+flags[%d] > IE Length[%d]",
+                size, (int)sizeof(tft->flags), octet->len);
+        return size;
+    }
     memcpy(&tft->flags, (unsigned char *)octet->data+size, sizeof(tft->flags));
     size++;
 
@@ -304,7 +323,11 @@ int16_t ogs_gtp2_parse_tft(ogs_gtp2_tft_t *tft, ogs_tlv_octet_t *octet)
 
     for (i = 0; i < tft->num_of_packet_filter &&
                 i < OGS_MAX_NUM_OF_FLOW_IN_GTP ; i++) {
-        ogs_assert(size+sizeof(tft->pf[i].flags) <= octet->len);
+        if (size + (int)sizeof(tft->pf[i].flags) > octet->len) {
+            ogs_error("TFT: size[%d]+pf[%d].flags[%d] > IE Length[%d]",
+                    size, i, (int)sizeof(tft->pf[i].flags), octet->len);
+            return size;
+        }
         memcpy(&tft->pf[i].flags, (unsigned char *)octet->data+size,
                 sizeof(tft->pf[i].flags));
         size += sizeof(tft->pf[i].flags);
@@ -312,29 +335,70 @@ int16_t ogs_gtp2_parse_tft(ogs_gtp2_tft_t *tft, ogs_tlv_octet_t *octet)
         if (tft->code == OGS_GTP2_TFT_CODE_DELETE_PACKET_FILTERS_FROM_EXISTING)
             continue;
 
-        ogs_assert(size+sizeof(tft->pf[i].precedence) <= octet->len);
+        if (size + (int)sizeof(tft->pf[i].precedence) > octet->len) {
+            ogs_error("TFT: size[%d]+pf[%d].precedence[%d] > IE Length[%d]",
+                    size, i, (int)sizeof(tft->pf[i].precedence), octet->len);
+            return size;
+        }
         memcpy(&tft->pf[i].precedence, (unsigned char *)octet->data+size,
                 sizeof(tft->pf[i].precedence));
         size += sizeof(tft->pf[i].precedence);
 
-        ogs_assert(size+sizeof(tft->pf[i].content.length) <= octet->len);
+        if (size + (int)sizeof(tft->pf[i].content.length) > octet->len) {
+            ogs_error("TFT: size[%d]+pf[%d].content.length[%d] > IE Length[%d]",
+                    size, i, (int)sizeof(tft->pf[i].content.length),
+                    octet->len);
+            return size;
+        }
         memcpy(&tft->pf[i].content.length, (unsigned char *)octet->data+size,
                 sizeof(tft->pf[i].content.length));
         size += sizeof(tft->pf[i].content.length);
 
+        /*
+         * Critical validation:
+         * content.length must not exceed remaining IE length.
+         * This prevents out-of-bounds reads/crash for malformed TFT/TAD.
+         */
+        if ((int)tft->pf[i].content.length > (octet->len - size)) {
+            ogs_error("TFT: pf[%d].content.length[%u] > remaining[%d] "
+                    "(size[%d], IE[%d])", i, tft->pf[i].content.length,
+                    octet->len - size, size, octet->len);
+            return size;
+        }
+
         j = 0; len = 0;
         while(len < tft->pf[i].content.length) {
-            ogs_assert(size+len+sizeof(tft->pf[i].content.component[j].type) <=
+            int comp_max = (int)(sizeof(tft->pf[i].content.component) /
+                                 sizeof(tft->pf[i].content.component[0]));
+            if (j >= comp_max) {
+                ogs_error("TFT: pf[%d] too many components (j[%d] >= max[%d])",
+                        i, j, comp_max);
+                return size;
+            }
+            if (size + len + (int)sizeof(tft->pf[i].content.component[j].type) >
+                octet->len) {
+                ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                        "type[%d] > IE Length[%d]",
+                        size, len, i, j,
+                        (int)sizeof(tft->pf[i].content.component[j].type),
                         octet->len);
+                return size;
+            }
             memcpy(&tft->pf[i].content.component[j].type,
                     (unsigned char *)octet->data+size+len,
                     sizeof(tft->pf[i].content.component[j].type));
             len += sizeof(tft->pf[i].content.component[j].type);
             switch(tft->pf[i].content.component[j].type) {
             case OGS_PACKET_FILTER_PROTOCOL_IDENTIFIER_NEXT_HEADER_TYPE:
-                ogs_assert(size+len+
-                        sizeof(tft->pf[i].content.component[j].proto) <=
-                        octet->len);
+                if (size + len +
+                    (int)sizeof(tft->pf[i].content.component[j].proto) >
+                    octet->len) {
+                    ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                            "proto[%d] > IE Length[%d]", size, len, i, j,
+                            (int)sizeof(tft->pf[i].content.component[j].proto),
+                            octet->len);
+                    return size;
+                }
                 memcpy(&tft->pf[i].content.component[j].proto,
                         (unsigned char *)octet->data+size+len,
                         sizeof(tft->pf[i].content.component[j].proto));
@@ -342,17 +406,33 @@ int16_t ogs_gtp2_parse_tft(ogs_gtp2_tft_t *tft, ogs_tlv_octet_t *octet)
                 break;
             case OGS_PACKET_FILTER_IPV4_REMOTE_ADDRESS_TYPE:
             case OGS_PACKET_FILTER_IPV4_LOCAL_ADDRESS_TYPE:
-                ogs_assert(size+len+
-                        sizeof(tft->pf[i].content.component[j].ipv4.addr) <=
-                        octet->len);
+                if (size + len +
+                    (int)sizeof(tft->pf[i].content.component[j].ipv4.addr) >
+                    octet->len) {
+                    ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                            "ipv4.addr[%d] > IE Length[%d]",
+                            size, len, i, j,
+                            (int)sizeof(tft->pf[i].content.component[j].
+                                ipv4.addr),
+                            octet->len);
+                    return size;
+                }
                 memcpy(&tft->pf[i].content.component[j].ipv4.addr,
                     (unsigned char *)octet->data+size+len,
                     sizeof(tft->pf[i].content.component[j].ipv4.addr));
                 len += sizeof(tft->pf[i].content.component[j].ipv4.addr);
 
-                ogs_assert(size+len+
-                    sizeof(tft->pf[i].content.component[j].ipv4.mask) <=
-                    octet->len);
+                if (size + len +
+                    (int)sizeof(tft->pf[i].content.component[j].ipv4.mask) >
+                    octet->len) {
+                    ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                            "ipv4.mask[%d] > IE Length[%d]",
+                            size, len, i, j,
+                            (int)sizeof(tft->pf[i].content.component[j].
+                                ipv4.mask),
+                            octet->len);
+                    return size;
+                }
                 memcpy(&tft->pf[i].content.component[j].ipv4.mask,
                     (unsigned char *)octet->data+size+len,
                     sizeof(tft->pf[i].content.component[j].ipv4.mask));
@@ -360,17 +440,33 @@ int16_t ogs_gtp2_parse_tft(ogs_gtp2_tft_t *tft, ogs_tlv_octet_t *octet)
                 break;
             case OGS_PACKET_FILTER_IPV6_LOCAL_ADDRESS_PREFIX_LENGTH_TYPE:
             case OGS_PACKET_FILTER_IPV6_REMOTE_ADDRESS_PREFIX_LENGTH_TYPE:
-                ogs_assert(size+len+
-                    sizeof(tft->pf[i].content.component[j].ipv6.addr) <=
-                    octet->len);
+                if (size + len + (int)sizeof(tft->pf[i].content.component[j].
+                        ipv6.addr) >
+                    octet->len) {
+                    ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                            "ipv6.addr[%d] > IE Length[%d]",
+                            size, len, i, j,
+                            (int)sizeof(tft->pf[i].content.component[j].
+                                ipv6.addr),
+                            octet->len);
+                    return size;
+                }
                 memcpy(&tft->pf[i].content.component[j].ipv6.addr,
                     (unsigned char *)octet->data+size+len,
                     sizeof(tft->pf[i].content.component[j].ipv6.addr));
                 len += sizeof(tft->pf[i].content.component[j].ipv6.addr);
 
-                ogs_assert(size+len+
-                    sizeof(tft->pf[i].content.component[j].ipv6.prefixlen) <=
-                        octet->len);
+                if (size + len + (int)sizeof(tft->pf[i].content.component[j].
+                        ipv6.prefixlen) >
+                    octet->len) {
+                    ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                            "ipv6.prefixlen[%d] > IE Length[%d]",
+                            size, len, i, j,
+                            (int)sizeof(tft->pf[i].content.component[j].
+                                ipv6.prefixlen),
+                            octet->len);
+                    return size;
+                }
                 memcpy(&tft->pf[i].content.component[j].ipv6.prefixlen,
                     (unsigned char *)octet->data+size+len,
                     sizeof(tft->pf[i].content.component[j].ipv6.prefixlen));
@@ -378,17 +474,33 @@ int16_t ogs_gtp2_parse_tft(ogs_gtp2_tft_t *tft, ogs_tlv_octet_t *octet)
                 break;
             case OGS_PACKET_FILTER_IPV6_LOCAL_ADDRESS_TYPE:
             case OGS_PACKET_FILTER_IPV6_REMOTE_ADDRESS_TYPE:
-                ogs_assert(size+len+
-                    sizeof(tft->pf[i].content.component[j].ipv6_mask.addr) <=
-                        octet->len);
+                if (size + len + (int)sizeof(tft->pf[i].content.component[j].
+                        ipv6_mask.addr) >
+                    octet->len) {
+                    ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                            "ipv6_mask.addr[%d] > IE Length[%d]",
+                            size, len, i, j,
+                            (int)sizeof(tft->pf[i].content.component[j].
+                                ipv6_mask.addr),
+                            octet->len);
+                    return size;
+                }
                 memcpy(&tft->pf[i].content.component[j].ipv6_mask.addr,
                     (unsigned char *)octet->data+size+len,
                     sizeof(tft->pf[i].content.component[j].ipv6_mask.addr));
                 len += sizeof(tft->pf[i].content.component[j].ipv6_mask.addr);
 
-                ogs_assert(size+len+
-                    sizeof(tft->pf[i].content.component[j].ipv6_mask.mask) <=
-                        octet->len);
+                if (size + len + (int)sizeof(tft->pf[i].content.component[j].
+                        ipv6_mask.mask) >
+                    octet->len) {
+                    ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                            "ipv6_mask.mask[%d] > IE Length[%d]",
+                            size, len, i, j,
+                            (int)sizeof(tft->pf[i].content.component[j].
+                                ipv6_mask.mask),
+                            octet->len);
+                    return size;
+                }
                 memcpy(&tft->pf[i].content.component[j].ipv6_mask.mask,
                     (unsigned char *)octet->data+size+len,
                     sizeof(tft->pf[i].content.component[j].ipv6_mask.mask));
@@ -396,9 +508,17 @@ int16_t ogs_gtp2_parse_tft(ogs_gtp2_tft_t *tft, ogs_tlv_octet_t *octet)
                 break;
             case OGS_PACKET_FILTER_SINGLE_LOCAL_PORT_TYPE:
             case OGS_PACKET_FILTER_SINGLE_REMOTE_PORT_TYPE:
-                ogs_assert(size+len+
-                    sizeof(tft->pf[i].content.component[j].port.low) <=
-                        octet->len);
+                if (size + len + (int)sizeof(tft->pf[i].content.component[j].
+                        port.low) >
+                    octet->len) {
+                    ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                            "port.low[%d] > IE Length[%d]",
+                            size, len, i, j,
+                            (int)sizeof(tft->pf[i].content.component[j].
+                                port.low),
+                            octet->len);
+                    return size;
+                }
                 memcpy(&tft->pf[i].content.component[j].port.low,
                     (unsigned char *)octet->data+size+len,
                     sizeof(tft->pf[i].content.component[j].port.low));
@@ -408,9 +528,17 @@ int16_t ogs_gtp2_parse_tft(ogs_gtp2_tft_t *tft, ogs_tlv_octet_t *octet)
                 break;
             case OGS_PACKET_FILTER_LOCAL_PORT_RANGE_TYPE:
             case OGS_PACKET_FILTER_REMOTE_PORT_RANGE_TYPE:
-                ogs_assert(size+len+
-                    sizeof(tft->pf[i].content.component[j].port.low) <=
-                        octet->len);
+                if (size + len + (int)sizeof(tft->pf[i].content.component[j].
+                        port.low) >
+                    octet->len) {
+                    ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                            "port.low[%d] > IE Length[%d]",
+                            size, len, i, j,
+                            (int)sizeof(tft->pf[i].content.component[j].
+                                port.low),
+                            octet->len);
+                    return size;
+                }
                 memcpy(&tft->pf[i].content.component[j].port.low,
                     (unsigned char *)octet->data+size+len,
                     sizeof(tft->pf[i].content.component[j].port.low));
@@ -418,9 +546,17 @@ int16_t ogs_gtp2_parse_tft(ogs_gtp2_tft_t *tft, ogs_tlv_octet_t *octet)
                     be16toh(tft->pf[i].content.component[j].port.low);
                 len += sizeof(tft->pf[i].content.component[j].port.low);
 
-                ogs_assert(size+len+
-                    sizeof(tft->pf[i].content.component[j].port.high) <=
-                        octet->len);
+                if (size + len + (int)sizeof(tft->pf[i].content.component[j].
+                        port.high) >
+                    octet->len) {
+                    ogs_error("TFT: size[%d]+len[%d]+pf[%d].component[%d]."
+                            "port.high[%d] > IE Length[%d]",
+                            size, len, i, j,
+                            (int)sizeof(tft->pf[i].content.component[j].
+                                port.high),
+                            octet->len);
+                    return size;
+                }
                 memcpy(&tft->pf[i].content.component[j].port.high,
                     (unsigned char *)octet->data+size+len,
                     sizeof(tft->pf[i].content.component[j].port.high));
@@ -439,7 +575,8 @@ int16_t ogs_gtp2_parse_tft(ogs_gtp2_tft_t *tft, ogs_tlv_octet_t *octet)
         size += len;
     }
 
-    ogs_assert(size == octet->len);
+    if (size != octet->len)
+        ogs_error("Mismatch IE Length[%d] != Decoded[%d]", octet->len, size);
 
     return size;
 }
@@ -607,7 +744,6 @@ int16_t ogs_gtp2_build_tft(
         }
     }
 
-
     octet->len = size;
 
     return octet->len;
@@ -617,11 +753,13 @@ int16_t ogs_gtp2_build_tft(
 /* 8.21 User Location Information (ULI) */
 int16_t ogs_gtp2_parse_uli(ogs_gtp2_uli_t *uli, ogs_tlv_octet_t *octet)
 {
-    ogs_gtp2_uli_t *source = (ogs_gtp2_uli_t *)octet->data;
+    ogs_gtp2_uli_t *source = NULL;
     int16_t size = 0;
 
     ogs_assert(uli);
     ogs_assert(octet);
+
+    source = (ogs_gtp2_uli_t *)octet->data;
 
     memset(uli, 0, sizeof(ogs_gtp2_uli_t));
 
@@ -629,7 +767,11 @@ int16_t ogs_gtp2_parse_uli(ogs_gtp2_uli_t *uli, ogs_tlv_octet_t *octet)
     size++;
 
     if (uli->flags.cgi) {
-        ogs_assert(size + sizeof(uli->cgi) <= octet->len);
+        if (size + sizeof(uli->cgi) > octet->len) {
+            ogs_error("size[%d]+sizeof(uli->cgi)[%d] > IE Length[%d]",
+                    size, (int)sizeof(uli->cgi), octet->len);
+            return 0;
+        }
         memcpy(&uli->cgi,
                 (unsigned char *)octet->data + size, sizeof(uli->cgi));
         uli->cgi.lac = be16toh(uli->cgi.lac);
@@ -637,7 +779,11 @@ int16_t ogs_gtp2_parse_uli(ogs_gtp2_uli_t *uli, ogs_tlv_octet_t *octet)
         size += sizeof(uli->cgi);
     }
     if (uli->flags.sai) {
-        ogs_assert(size + sizeof(uli->sai) <= octet->len);
+        if (size + sizeof(uli->sai) > octet->len) {
+            ogs_error("size[%d]+sizeof(uli->sai)[%d] > IE Length[%d]",
+                    size, (int)sizeof(uli->sai), octet->len);
+            return 0;
+        }
         memcpy(&uli->sai,
                 (unsigned char *)octet->data + size, sizeof(uli->sai));
         uli->sai.lac = be16toh(uli->sai.lac);
@@ -645,7 +791,11 @@ int16_t ogs_gtp2_parse_uli(ogs_gtp2_uli_t *uli, ogs_tlv_octet_t *octet)
         size += sizeof(uli->sai);
     }
     if (uli->flags.rai) {
-        ogs_assert(size + sizeof(uli->rai) <= octet->len);
+        if (size + sizeof(uli->rai) > octet->len) {
+            ogs_error("size[%d]+sizeof(uli->lai)[%d] > IE Length[%d]",
+                    size, (int)sizeof(uli->lai), octet->len);
+            return 0;
+        }
         memcpy(&uli->rai,
                 (unsigned char *)octet->data + size, sizeof(uli->rai));
         uli->rai.lac = be16toh(uli->rai.lac);
@@ -653,28 +803,44 @@ int16_t ogs_gtp2_parse_uli(ogs_gtp2_uli_t *uli, ogs_tlv_octet_t *octet)
         size += sizeof(uli->rai);
     }
     if (uli->flags.tai) {
-        ogs_assert(size + sizeof(uli->tai) <= octet->len);
+        if (size + sizeof(uli->tai) > octet->len) {
+            ogs_error("size[%d]+sizeof(uli->tai)[%d] > IE Length[%d]",
+                    size, (int)sizeof(uli->tai), octet->len);
+            return 0;
+        }
         memcpy(&uli->tai,
                 (unsigned char *)octet->data + size, sizeof(uli->tai));
         uli->tai.tac = be16toh(uli->tai.tac);
         size += sizeof(uli->tai);
     }
     if (uli->flags.e_cgi) {
-        ogs_assert(size + sizeof(uli->e_cgi) <= octet->len);
+        if (size + sizeof(uli->e_cgi) > octet->len) {
+            ogs_error("size[%d]+sizeof(uli->e_cgi)[%d] > IE Length[%d]",
+                    size, (int)sizeof(uli->e_cgi), octet->len);
+            return 0;
+        }
         memcpy(&uli->e_cgi,
                 (unsigned char *)octet->data + size, sizeof(uli->e_cgi));
         uli->e_cgi.cell_id = be32toh(uli->e_cgi.cell_id);
         size += sizeof(uli->e_cgi);
     }
     if (uli->flags.lai) {
-        ogs_assert(size + sizeof(uli->lai) <= octet->len);
+        if (size + sizeof(uli->lai) > octet->len) {
+            ogs_error("size[%d]+sizeof(uli->lai)[%d] > IE Length[%d]",
+                    size, (int)sizeof(uli->lai), octet->len);
+            return 0;
+        }
         memcpy(&uli->lai,
                 (unsigned char *)octet->data + size, sizeof(uli->lai));
         uli->lai.lac = be16toh(uli->lai.lac);
         size += sizeof(uli->lai);
     }
     if (uli->flags.enodeb_id) {
-        ogs_assert(size + sizeof(uli->enodeb_id) <= octet->len);
+        if (size + sizeof(uli->enodeb_id) > octet->len) {
+            ogs_error("size[%d]+sizeof(uli->enodeb_id)[%d] > IE Length[%d]",
+                    size, (int)sizeof(uli->enodeb_id), octet->len);
+            return 0;
+        }
         memcpy(&uli->enodeb_id,
                 (unsigned char *)octet->data + size, sizeof(uli->enodeb_id));
         uli->enodeb_id.enodeb_id = be16toh(uli->enodeb_id.enodeb_id);
@@ -684,7 +850,8 @@ int16_t ogs_gtp2_parse_uli(ogs_gtp2_uli_t *uli, ogs_tlv_octet_t *octet)
         ogs_error("Extended Macro eNodeB ID in ULI not implemented! see 3GPP TS 29.274 8.21.8");
     }
 
-    ogs_assert(size == octet->len);
+    if (size != octet->len)
+        ogs_error("Mismatch IE Length[%d] != Decoded[%d]", octet->len, size);
 
     return size;
 }
@@ -762,6 +929,98 @@ int16_t ogs_gtp2_build_uli(
     if (uli->flags.ext_enodeb_id) { /* TODO */
         ogs_error("Extended Macro eNodeB ID in ULI not implemented! see 3GPP TS 29.274 8.21.8");
     }
+
+    octet->len = size;
+
+    return octet->len;
+}
+
+int16_t ogs_gtp2_parse_node_identifier(
+    ogs_gtp2_node_identifier_t *node_identifier, ogs_tlv_octet_t *octet)
+{
+    int16_t size = 0;
+
+    ogs_assert(node_identifier);
+    ogs_assert(octet);
+
+    memset(node_identifier, 0, sizeof(ogs_gtp2_node_identifier_t));
+
+    if (size + sizeof(node_identifier->name_len) > octet->len) {
+        ogs_error("Invalid TLV length [%d != %d]", size, octet->len);
+        ogs_log_hexdump(OGS_LOG_ERROR, octet->data, octet->len);
+        return size;
+    }
+    memcpy(&node_identifier->name_len,
+            (unsigned char *)octet->data + size,
+            sizeof(node_identifier->name_len));
+    size += sizeof(node_identifier->name_len);
+
+    if (size + node_identifier->name_len > octet->len) {
+        ogs_error("Invalid TLV length [%d != %d]", size, octet->len);
+        ogs_log_hexdump(OGS_LOG_ERROR, octet->data, octet->len);
+        return size;
+    }
+    node_identifier->name = (char *)octet->data + size;
+    size += node_identifier->name_len;
+
+    if (size + sizeof(node_identifier->realm_len) > octet->len) {
+        ogs_error("Invalid TLV length [%d != %d]", size, octet->len);
+        ogs_log_hexdump(OGS_LOG_ERROR, octet->data, octet->len);
+        return size;
+    }
+    memcpy(&node_identifier->realm_len,
+            (unsigned char *)octet->data + size,
+            sizeof(node_identifier->realm_len));
+    size += sizeof(node_identifier->realm_len);
+
+    if (size + node_identifier->realm_len > octet->len) {
+        ogs_error("Invalid TLV length [%d != %d]", size, octet->len);
+        ogs_log_hexdump(OGS_LOG_ERROR, octet->data, octet->len);
+        return size;
+    }
+    node_identifier->realm = (char *)octet->data + size;
+    size += node_identifier->realm_len;
+
+    if (size != octet->len) {
+        ogs_error("Invalid TLV length [%d != %d]", size, octet->len);
+        ogs_log_hexdump(OGS_LOG_ERROR, octet->data, octet->len);
+    }
+
+    return size;
+}
+int16_t ogs_gtp2_build_node_identifier(ogs_tlv_octet_t *octet,
+    ogs_gtp2_node_identifier_t *node_identifier, void *data, int data_len)
+{
+    int16_t size = 0;
+
+    ogs_assert(node_identifier);
+    ogs_assert(octet);
+    ogs_assert(data);
+    ogs_assert(data_len);
+
+    octet->data = data;
+
+    ogs_assert(size + sizeof(node_identifier->name_len) <= data_len);
+    memcpy((unsigned char *)octet->data + size,
+            &node_identifier->name_len,
+            sizeof(node_identifier->name_len));
+    size += sizeof(node_identifier->name_len);
+
+    ogs_assert(size + node_identifier->name_len <= data_len);
+    memcpy((unsigned char *)octet->data + size,
+            node_identifier->name, node_identifier->name_len);
+    size += node_identifier->name_len;
+
+    ogs_assert(size + sizeof(node_identifier->realm_len) <= data_len);
+    memcpy((unsigned char *)octet->data + size,
+            &node_identifier->realm_len,
+            sizeof(node_identifier->realm_len));
+    size += sizeof(node_identifier->realm_len);
+
+    ogs_assert(size + node_identifier->realm_len <= data_len);
+    memcpy((unsigned char *)octet->data + size,
+            node_identifier->realm, node_identifier->realm_len);
+    size += node_identifier->realm_len;
 
     octet->len = size;
 

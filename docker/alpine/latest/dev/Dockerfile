@@ -3,7 +3,7 @@ ARG tag=latest
 ARG username=acetcom
 FROM ${username}/${dist}-${tag}-open5gs-base
 
-MAINTAINER Sukchan Lee <acetcom@gmail.com>
+LABEL org.opencontainers.image.authors="Sukchan Lee <acetcom@gmail.com>"
 
 COPY setup.sh /root
 
@@ -13,7 +13,7 @@ RUN apk update && \
         sudo
 
 ARG username=acetcom
-RUN adduser -u 1000 acetcom -D && \
+RUN adduser -u 2000 acetcom -D && \
     echo "${username} ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/${username} && \
     chmod 0440 /etc/sudoers.d/${username}
 

@@ -36,7 +36,7 @@ int ogs_ascii_to_hex(char *in, int in_len, void *out, int out_len)
 
     while(i < in_len && j < out_len) {
         if (!isspace(in[i])) {
-            hex = isdigit(in[i]) ? in[i] - '0' : 
+            hex = isdigit(in[i]) ? in[i] - '0' :
                 islower(in[i]) ? in[i] - 'a' + 10 : in[i] - 'A' + 10;
             if ((k & 0x1) == 0) {
                 out_p[j] = (hex << 4);
@@ -52,7 +52,7 @@ int ogs_ascii_to_hex(char *in, int in_len, void *out, int out_len)
     return j;
 }
 
-void *ogs_hex_to_ascii(void *in, int in_len, void *out, int out_len)
+void *ogs_hex_to_ascii(const void *in, int in_len, void *out, int out_len)
 {
     char *p, *last;
     int i = 0, l, off = 0;
@@ -73,8 +73,8 @@ void *ogs_uint64_to_buffer(uint64_t num, int size, void *buffer)
 {
     int i;
     uint8_t *buffer_p = buffer;
-    for (i = 0; i < size; i++) 
-        buffer_p[i] = (num >> ((size-1-i) * 8)) & 0xff; 
+    for (i = 0; i < size; i++)
+        buffer_p[i] = (num >> ((size-1-i) * 8)) & 0xff;
 
     return buffer;
 }
@@ -214,36 +214,65 @@ char *ogs_uint64_to_string(uint64_t x)
     return dup;
 }
 
-ogs_uint24_t ogs_uint24_from_string(char *str)
+ogs_uint24_t ogs_uint24_from_string(char *str, int base)
 {
     ogs_uint24_t x;
 
     ogs_assert(str);
 
-    x.v = ogs_uint64_from_string(str);
+    x.v = ogs_uint64_from_string(str, base);
     return x;
 }
 
-uint64_t ogs_uint64_from_string(char *str)
+uint64_t ogs_uint64_from_string(char *str, int base)
 {
-    uint64_t x;
+    char *end = NULL;
+    unsigned long long v;
 
     ogs_assert(str);
 
-    if (strlen(str) == 0)
+    if (str[0] == '\0') {
+    /* SupportedFeatures/OpenAPI allows empty string; treat as success(0). */
+        errno = 0;
         return 0;
-
-    errno = 0;
-    x = strtoll(str, NULL, 16);
-
-    if ((errno == ERANGE && (x == LONG_MAX || x == LONG_MIN)) ||
-            (errno != 0 && x == 0)) {
-        ogs_log_message(OGS_LOG_FATAL, ogs_errno, "strtoll()) failed [%lld]",
-                (long long)x);
-        ogs_assert_if_reached();
     }
 
-    return x;
+    /* reject negative for uint64 */
+    if (str[0] == '-') {
+        errno = EINVAL;
+        ogs_log_message(OGS_LOG_ERROR, ogs_errno,
+                "strtoull() failed (negative) [%s]", str);
+        return 0;
+    }
+
+    errno = 0;
+    v = strtoull(str, &end, base);
+
+    /* no digits parsed */
+    if (end == str) {
+        errno = EINVAL;
+        ogs_log_message(OGS_LOG_ERROR, ogs_errno,
+                "strtoull() failed (no digits) [%s]", str);
+        return 0;
+    }
+
+    /* trailing garbage */
+    if (*end != '\0') {
+        errno = EINVAL;
+        ogs_log_message(OGS_LOG_ERROR, ogs_errno,
+                "strtoull() failed (trailing) [%s]", str);
+        return 0;
+    }
+
+    /* overflow/underflow */
+    if (errno == ERANGE) {
+        ogs_log_message(OGS_LOG_ERROR, ogs_errno,
+                "strtoull() failed (range) [%s]", str);
+        return 0;
+    }
+
+    errno = 0;  /* success */
+    return (uint64_t)v;
 }
 
 double *ogs_alloc_double(double value)

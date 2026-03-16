@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2023 by Sukchan Lee <acetcom@gmail.com>
+ * Copyright (C) 2019-2026 by Sukchan Lee <acetcom@gmail.com>
  *
  * This file is part of Open5GS.
  *
@@ -28,23 +28,34 @@
 #undef OGS_LOG_DOMAIN
 #define OGS_LOG_DOMAIN __esm_log_domain
 
-int esm_handle_pdn_connectivity_request(mme_bearer_t *bearer, 
-        ogs_nas_eps_pdn_connectivity_request_t *req, int create_action)
+int esm_handle_pdn_connectivity_request(
+        enb_ue_t *enb_ue, mme_bearer_t *bearer,
+        ogs_nas_eps_pdn_connectivity_request_t *req,
+        int create_action)
 {
     int r;
     mme_ue_t *mme_ue = NULL;
     mme_sess_t *sess = NULL;
     uint8_t security_protected_required = 0;
-
-    MME_UE_LIST_CHECK;
-
-    ogs_assert(bearer);
-    sess = bearer->sess;
-    ogs_assert(sess);
-    mme_ue = sess->mme_ue;
-    ogs_assert(mme_ue);
+    const char *emergency_dnn = mme_self()->emergency.dnn;
+    bool emergency;
 
     ogs_assert(req);
+
+    if (!bearer) {
+        ogs_error("No bearer context");
+        return OGS_NOTFOUND;
+    }
+    sess = mme_sess_find_by_id(bearer->sess_id);
+    if (!sess) {
+        ogs_warn("Session context has already been removed");
+        return OGS_NOTFOUND;
+    }
+    mme_ue = mme_ue_find_by_id(sess->mme_ue_id);
+    if (!mme_ue) {
+        ogs_warn("UE(mme-ue) context has already been removed");
+        return OGS_NOTFOUND;
+    }
 
     ogs_assert(MME_UE_HAVE_IMSI(mme_ue));
 
@@ -58,7 +69,22 @@ int esm_handle_pdn_connectivity_request(mme_bearer_t *bearer,
         return OGS_ERROR;
     }
 
-    memcpy(&sess->request_type, &req->request_type, sizeof(sess->request_type));
+    if (req->request_type.type == OGS_NAS_EPS_PDN_TYPE_IPV4 ||
+        req->request_type.type == OGS_NAS_EPS_PDN_TYPE_IPV6 ||
+        req->request_type.type == OGS_NAS_EPS_PDN_TYPE_IPV4V6) {
+        /* OK */
+    } else {
+        /* NOT-allowed PDN Type */
+        r = nas_eps_send_pdn_connectivity_reject(
+                sess, OGS_NAS_ESM_CAUSE_UNKNOWN_PDN_TYPE,
+                create_action);
+        ogs_expect(r == OGS_OK);
+        ogs_assert(r != OGS_ERROR);
+        return OGS_ERROR;
+    }
+
+    memcpy(&sess->ue_request_type,
+            &req->request_type, sizeof(sess->ue_request_type));
 
     security_protected_required = 0;
     if (req->presencemask &
@@ -71,10 +97,27 @@ int esm_handle_pdn_connectivity_request(mme_bearer_t *bearer,
                 security_protected_required);
     }
 
-    if (req->presencemask &
-            OGS_NAS_EPS_PDN_CONNECTIVITY_REQUEST_ACCESS_POINT_NAME_PRESENT) {
-        sess->session = mme_session_find_by_apn(
-                            mme_ue, req->access_point_name.apn);
+    emergency = (req->request_type.value == OGS_NAS_EPS_REQUEST_TYPE_EMERGENCY);
+    if (emergency && !emergency_dnn) {
+        /* Emergency call, but no emergency APN defined */
+        r = nas_eps_send_pdn_connectivity_reject(
+                sess, OGS_NAS_ESM_CAUSE_REQUEST_REJECTED_UNSPECIFIED, create_action);
+        ogs_expect(r == OGS_OK);
+        ogs_assert(r != OGS_ERROR);
+        ogs_warn("Emergency call, but no emergency APN defined");
+        return OGS_ERROR;
+    }
+    if ((req->presencemask &
+            OGS_NAS_EPS_PDN_CONNECTIVITY_REQUEST_ACCESS_POINT_NAME_PRESENT) ||
+        emergency) {
+        const char *apn;
+        if (emergency) {
+            apn = emergency_dnn;
+            sess->ue_request_type.value = 1;
+        } else {
+            apn = req->access_point_name.apn;
+        }
+        sess->session = mme_session_find_by_apn(mme_ue, apn);
         if (!sess->session) {
             /* Invalid APN */
             r = nas_eps_send_pdn_connectivity_reject(
@@ -82,7 +125,7 @@ int esm_handle_pdn_connectivity_request(mme_bearer_t *bearer,
                     create_action);
             ogs_expect(r == OGS_OK);
             ogs_assert(r != OGS_ERROR);
-            ogs_warn("Invalid APN[%s]", req->access_point_name.apn);
+            ogs_warn("Invalid APN[%s]", apn);
             return OGS_ERROR;
         }
 
@@ -90,10 +133,10 @@ int esm_handle_pdn_connectivity_request(mme_bearer_t *bearer,
             sess->session->session_type == OGS_PDU_SESSION_TYPE_IPV6 ||
             sess->session->session_type == OGS_PDU_SESSION_TYPE_IPV4V6) {
             uint8_t derived_pdn_type =
-                (sess->session->session_type & sess->request_type.type);
+                (sess->session->session_type & sess->ue_request_type.type);
             if (derived_pdn_type == 0) {
                 ogs_error("Cannot derived PDN Type [UE:%d,HSS:%d]",
-                    sess->request_type.type, sess->session->session_type);
+                    sess->ue_request_type.type, sess->session->session_type);
                 r = nas_eps_send_pdn_connectivity_reject(
                         sess, OGS_NAS_ESM_CAUSE_UNKNOWN_PDN_TYPE,
                         create_action);
@@ -160,7 +203,7 @@ int esm_handle_pdn_connectivity_request(mme_bearer_t *bearer,
         }
 
         ogs_assert(OGS_OK ==
-            mme_gtp_send_create_session_request(sess, create_action));
+            mme_gtp_send_create_session_request(enb_ue, sess, create_action));
     } else {
         ogs_error("No APN");
         r = nas_eps_send_pdn_connectivity_reject(
@@ -173,19 +216,24 @@ int esm_handle_pdn_connectivity_request(mme_bearer_t *bearer,
     return OGS_OK;
 }
 
-int esm_handle_information_response(mme_sess_t *sess, 
+int esm_handle_information_response(
+        enb_ue_t *enb_ue, mme_sess_t *sess,
         ogs_nas_eps_esm_information_response_t *rsp)
 {
     int r;
     mme_ue_t *mme_ue = NULL;
 
-    ogs_assert(sess);
-    mme_ue = sess->mme_ue;
-    ogs_assert(mme_ue);
-
     ogs_assert(rsp);
 
-    MME_UE_LIST_CHECK;
+    if (!sess) {
+        ogs_warn("Session context has already been removed");
+        return OGS_NOTFOUND;
+    }
+    mme_ue = mme_ue_find_by_id(sess->mme_ue_id);
+    if (!mme_ue) {
+        ogs_warn("UE(mme-ue) context has already been removed");
+        return OGS_NOTFOUND;
+    }
 
     if (rsp->presencemask &
             OGS_NAS_EPS_ESM_INFORMATION_RESPONSE_ACCESS_POINT_NAME_PRESENT) {
@@ -217,10 +265,10 @@ int esm_handle_information_response(mme_sess_t *sess,
             sess->session->session_type == OGS_PDU_SESSION_TYPE_IPV6 ||
             sess->session->session_type == OGS_PDU_SESSION_TYPE_IPV4V6) {
             uint8_t derived_pdn_type =
-                (sess->session->session_type & sess->request_type.type);
+                (sess->session->session_type & sess->ue_request_type.type);
             if (derived_pdn_type == 0) {
                 ogs_error("Cannot derived PDN Type [UE:%d,HSS:%d]",
-                    sess->request_type.type, sess->session->session_type);
+                    sess->ue_request_type.type, sess->session->session_type);
                 r = nas_eps_send_pdn_connectivity_reject(
                         sess, OGS_NAS_ESM_CAUSE_UNKNOWN_PDN_TYPE,
                         OGS_GTP_CREATE_IN_ATTACH_REQUEST);
@@ -233,23 +281,26 @@ int esm_handle_information_response(mme_sess_t *sess,
             ogs_assert_if_reached();
         }
 
-        if (SESSION_CONTEXT_IS_AVAILABLE(mme_ue) &&
-            OGS_PDU_SESSION_TYPE_IS_VALID(sess->session->paa.session_type)) {
+        if (SESSION_CONTEXT_IS_AVAILABLE(mme_ue)) {
             mme_csmap_t *csmap = mme_csmap_find_by_tai(&mme_ue->tai);
             mme_ue->csmap = csmap;
 
-            if (csmap) {
-                ogs_assert(OGS_OK ==
-                    sgsap_send_location_update_request(mme_ue));
-            } else {
+            if (!csmap ||
+                mme_ue->network_access_mode ==
+                    OGS_NETWORK_ACCESS_MODE_ONLY_PACKET ||
+                mme_ue->nas_eps.attach.value ==
+                    OGS_NAS_ATTACH_TYPE_EPS_ATTACH) {
                 r = nas_eps_send_attach_accept(mme_ue);
                 ogs_expect(r == OGS_OK);
                 ogs_assert(r != OGS_ERROR);
+            } else {
+                ogs_assert(OGS_OK ==
+                    sgsap_send_location_update_request(mme_ue));
             }
         } else {
             ogs_assert(OGS_OK ==
                 mme_gtp_send_create_session_request(
-                    sess, OGS_GTP_CREATE_IN_ATTACH_REQUEST));
+                    enb_ue, sess, OGS_GTP_CREATE_IN_ATTACH_REQUEST));
         }
     } else {
         if (rsp->access_point_name.length)
@@ -269,17 +320,26 @@ int esm_handle_information_response(mme_sess_t *sess,
 }
 
 int esm_handle_bearer_resource_allocation_request(
-        mme_bearer_t *bearer, ogs_nas_eps_message_t *message)
+        enb_ue_t *enb_ue, mme_bearer_t *bearer, ogs_nas_eps_message_t *message)
 {
     int r;
     mme_ue_t *mme_ue = NULL;
     mme_sess_t *sess = NULL;
 
-    ogs_assert(bearer);
-    sess = bearer->sess;
-    ogs_assert(sess);
-    mme_ue = sess->mme_ue;
-    ogs_assert(mme_ue);
+    if (!bearer) {
+        ogs_error("No bearer context");
+        return OGS_NOTFOUND;
+    }
+    sess = mme_sess_find_by_id(bearer->sess_id);
+    if (!sess) {
+        ogs_warn("Session context has already been removed");
+        return OGS_NOTFOUND;
+    }
+    mme_ue = mme_ue_find_by_id(sess->mme_ue_id);
+    if (!mme_ue) {
+        ogs_warn("UE(mme-ue) context has already been removed");
+        return OGS_NOTFOUND;
+    }
 
     r = nas_eps_send_bearer_resource_allocation_reject(
             mme_ue, sess->pti, OGS_NAS_ESM_CAUSE_NETWORK_FAILURE);
@@ -290,13 +350,19 @@ int esm_handle_bearer_resource_allocation_request(
 }
 
 int esm_handle_bearer_resource_modification_request(
-        mme_bearer_t *bearer, ogs_nas_eps_message_t *message)
+        enb_ue_t *enb_ue, mme_bearer_t *bearer, ogs_nas_eps_message_t *message)
 {
     mme_ue_t *mme_ue = NULL;
 
-    ogs_assert(bearer);
-    mme_ue = bearer->mme_ue;
-    ogs_assert(mme_ue);
+    if (!bearer) {
+        ogs_error("No bearer context");
+        return OGS_NOTFOUND;
+    }
+    mme_ue = mme_ue_find_by_id(bearer->mme_ue_id);
+    if (!mme_ue) {
+        ogs_warn("UE(mme-ue) context has already been removed");
+        return OGS_NOTFOUND;
+    }
 
     ogs_assert(OGS_OK ==
         mme_gtp_send_bearer_resource_command(bearer, message));

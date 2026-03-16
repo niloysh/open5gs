@@ -36,7 +36,7 @@ ogs_pkbuf_t *sgwc_sxa_build_session_establishment_request(
     ogs_pfcp_f_seid_t f_seid;
     int len;
 
-    ogs_debug("Session Establishment Request");
+    ogs_info("Session Establishment Request");
     ogs_assert(sess);
 
     pfcp_message = ogs_calloc(1, sizeof(*pfcp_message));
@@ -131,16 +131,22 @@ ogs_pkbuf_t *sgwc_sxa_build_bearer_to_modify_list(
     int num_of_remove_far = 0;
     int num_of_create_pdr = 0;
     int num_of_create_far = 0;
+    int num_of_update_pdr = 0;
     int num_of_update_far = 0;
 
     uint64_t modify_flags = 0;
+    int total = 0;
 
-    ogs_debug("Session Modification Request");
+    ogs_info("Session Modification Request");
 
     ogs_assert(sess);
     ogs_assert(xact);
     modify_flags = xact->modify_flags;
     ogs_assert(modify_flags);
+    ogs_info("PFCP Session Modification build start: "
+            "sess_id=%d xact=%p flags=0x%llx bearer_to_modify_count=%d",
+            sess->id, xact, (unsigned long long)modify_flags,
+            ogs_list_count(&xact->bearer_to_modify_list));
 
     pfcp_message = ogs_calloc(1, sizeof(*pfcp_message));
     if (!pfcp_message) {
@@ -259,8 +265,34 @@ ogs_pkbuf_t *sgwc_sxa_build_bearer_to_modify_list(
                         ogs_assert_if_reached();
 
                 }
+
+                if (modify_flags & OGS_PFCP_MODIFY_OUTER_HEADER_REMOVAL) {
+                    /* Update PDR */
+                    pdr = tunnel->pdr;
+                    if (pdr) {
+                        ogs_pfcp_build_update_pdr(
+                                &req->update_pdr[num_of_update_pdr],
+                                num_of_update_pdr, pdr, modify_flags);
+                        num_of_update_pdr++;
+                    } else
+                        ogs_assert_if_reached();
+                }
             }
         }
+    }
+
+    total = num_of_remove_pdr + num_of_remove_far + num_of_create_pdr +
+            num_of_create_far + num_of_update_pdr + num_of_update_far;
+
+    if (!total) {
+        ogs_error("PFCP Session Modification build invalid state: "
+                "sess_id=%d xact=%p flags=0x%llx remove_pdr=%d remove_far=%d "
+                "create_pdr=%d create_far=%d update_pdr=%d update_far=%d",
+                sess->id, xact, (unsigned long long)modify_flags,
+                num_of_remove_pdr, num_of_remove_far,
+                num_of_create_pdr, num_of_create_far,
+                num_of_update_pdr, num_of_update_far);
+        ogs_assert_if_reached();
     }
 
     pfcp_message->h.type = type;
@@ -282,7 +314,7 @@ ogs_pkbuf_t *sgwc_sxa_build_session_deletion_request(
     ogs_pfcp_message_t *pfcp_message = NULL;
     ogs_pkbuf_t *pkbuf = NULL;
 
-    ogs_debug("Session Deletion Request");
+    ogs_info("Session Deletion Request");
     ogs_assert(sess);
 
     pfcp_message = ogs_calloc(1, sizeof(*pfcp_message));

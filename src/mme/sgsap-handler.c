@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 by Sukchan Lee <acetcom@gmail.com>
+ * Copyright (C) 2019-2024 by Sukchan Lee <acetcom@gmail.com>
  *
  * This file is part of Open5GS.
  *
@@ -33,6 +33,7 @@ void sgsap_handle_location_update_accept(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
     int r;
     ogs_tlv_t *root = NULL, *iter = NULL;
     mme_ue_t *mme_ue = NULL;
+    enb_ue_t *enb_ue = NULL;
 
     char imsi_bcd[OGS_MAX_IMSI_BCD_LEN+1];
 
@@ -100,6 +101,12 @@ void sgsap_handle_location_update_accept(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
         goto error;
     }
 
+    enb_ue = enb_ue_find_by_id(mme_ue->enb_ue_id);
+    if (!enb_ue) {
+        ogs_error("!enb_ue");
+        goto error;
+    }
+
     ogs_debug("    IMSI[%s]", mme_ue->imsi_bcd);
     if (lai) {
         ogs_debug("    LAI[PLMN_ID:%06x,LAC:%d]",
@@ -108,28 +115,94 @@ void sgsap_handle_location_update_accept(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
 
     if (nas_mobile_identity_tmsi) {
         if (nas_mobile_identity_tmsi->type == OGS_NAS_MOBILE_IDENTITY_TMSI) {
-            mme_ue->p_tmsi = be32toh(nas_mobile_identity_tmsi->tmsi);
+            mme_ue_set_p_tmsi(mme_ue, nas_mobile_identity_tmsi);
         } else {
             ogs_error("Not supported Identity type[%d]",
                     nas_mobile_identity_tmsi->type);
             goto error;
         }
-        ogs_debug("    P-TMSI[0x%08x]", mme_ue->p_tmsi);
+        ogs_debug("    P-TMSI[0x%08x]", mme_ue->next.p_tmsi);
     }
 
-    r = nas_eps_send_attach_accept(mme_ue);
-    ogs_expect(r == OGS_OK);
-    ogs_assert(r != OGS_ERROR);
+    if (mme_ue->nas_eps.type == MME_EPS_TYPE_ATTACH_REQUEST) {
+        r = nas_eps_send_attach_accept(mme_ue);
+        ogs_expect(r == OGS_OK);
+        ogs_assert(r != OGS_ERROR);
+    } else if (mme_ue->nas_eps.type == MME_EPS_TYPE_TAU_REQUEST) {
+        if (mme_ue->nas_eps.update.active_flag) {
+
+    /*
+     * TS33.401
+     * 7 Security procedures between UE and EPS access network elements
+     * 7.2 Handling of user-related keys in E-UTRAN
+     * 7.2.7 Key handling for the TAU procedure when registered in E-UTRAN
+     *
+     * If the "active flag" is set in the TAU request message or
+     * the MME chooses to establish radio bearers when there is pending downlink
+     * UP data or pending downlink signalling, radio bearers will be established
+     * as part of the TAU procedure and a KeNB derivation is necessary.
+     */
+            ogs_kdf_kenb(mme_ue->kasme, mme_ue->ul_count.i32,
+                    mme_ue->kenb);
+            ogs_kdf_nh_enb(mme_ue->kasme, mme_ue->kenb, mme_ue->nh);
+            mme_ue->nhcc = 1;
+
+            ogs_info("[%s] KDF update(active_flag=1)", mme_ue->imsi_bcd);
+        }
+
+        /* check BCS regardless of active_flag */
+        if (mme_ue->tracking_area_update_request_presencemask &
+            OGS_NAS_EPS_TRACKING_AREA_UPDATE_REQUEST_EPS_BEARER_CONTEXT_STATUS_TYPE) {
+            ogs_info("[%s] LU accept + TAU accept(active_flag=%d, BCS)",
+                mme_ue->imsi_bcd,
+                mme_ue->nas_eps.update.active_flag);
+            mme_send_delete_session_or_tau_accept(enb_ue, mme_ue);
+        } else {
+            ogs_info("[%s] LU accept + TAU accept(active_flag=%d, No BCS)",
+                mme_ue->imsi_bcd,
+                mme_ue->nas_eps.update.active_flag);
+            mme_send_tau_accept_and_check_release(enb_ue, mme_ue);
+        }
+    } else {
+        ogs_fatal("[%s] Invalid EPS-Type[%d]",
+                mme_ue->imsi_bcd, mme_ue->nas_eps.type);
+        ogs_assert_if_reached();
+    }
 
     return;
 
 error:
-    r = nas_eps_send_attach_reject(mme_ue,
-            OGS_NAS_EMM_CAUSE_PROTOCOL_ERROR_UNSPECIFIED,
-            OGS_NAS_ESM_CAUSE_PROTOCOL_ERROR_UNSPECIFIED);
-    ogs_expect(r == OGS_OK);
-    ogs_assert(r != OGS_ERROR);
-    mme_send_delete_session_or_mme_ue_context_release(mme_ue);
+    /* Clang scan-build SA:
+     * NULL pointer dereference: mme_ue=NULL if root=NULL. */
+    if (!mme_ue) {
+        ogs_error("!mme_ue");
+        return;
+    }
+    enb_ue = enb_ue_find_by_id(mme_ue->enb_ue_id);
+    if (!enb_ue) {
+        ogs_error("ENB-S1 Context has already been removed");
+        return;
+    }
+
+    if (mme_ue->nas_eps.type == MME_EPS_TYPE_ATTACH_REQUEST) {
+        r = nas_eps_send_attach_reject(
+                enb_ue, mme_ue,
+                OGS_NAS_EMM_CAUSE_PROTOCOL_ERROR_UNSPECIFIED,
+                OGS_NAS_ESM_CAUSE_PROTOCOL_ERROR_UNSPECIFIED);
+        ogs_expect(r == OGS_OK);
+        ogs_assert(r != OGS_ERROR);
+    } else if (mme_ue->nas_eps.type == MME_EPS_TYPE_TAU_REQUEST) {
+        r = nas_eps_send_tau_reject(
+                enb_ue, mme_ue,
+                OGS_NAS_EMM_CAUSE_UE_IDENTITY_CANNOT_BE_DERIVED_BY_THE_NETWORK);
+        ogs_expect(r == OGS_OK);
+        ogs_assert(r != OGS_ERROR);
+    } else {
+        ogs_fatal("[%s] Invalid EPS-Type[%d]",
+                mme_ue->imsi_bcd, mme_ue->nas_eps.type);
+        ogs_assert_if_reached();
+    }
+    mme_send_delete_session_or_mme_ue_context_release(enb_ue, mme_ue);
 }
 
 void sgsap_handle_location_update_reject(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
@@ -137,6 +210,7 @@ void sgsap_handle_location_update_reject(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
     int r;
     ogs_tlv_t *root = NULL, *iter = NULL;
     mme_ue_t *mme_ue = NULL;
+    enb_ue_t *enb_ue = NULL;
 
     char imsi_bcd[OGS_MAX_IMSI_BCD_LEN+1];
 
@@ -204,17 +278,77 @@ void sgsap_handle_location_update_reject(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
         return;
     }
 
+    enb_ue = enb_ue_find_by_id(mme_ue->enb_ue_id);
+    if (!enb_ue) {
+        ogs_error("!enb_ue");
+        goto error;
+    }
+
     ogs_debug("    IMSI[%s] CAUSE[%d]", mme_ue->imsi_bcd, emm_cause);
     if (lai) {
         ogs_debug("    LAI[PLMN_ID:%06x,LAC:%d]",
                     ogs_plmn_id_hexdump(&lai->nas_plmn_id), lai->lac);
     }
 
-    r = nas_eps_send_attach_reject(mme_ue,
-            emm_cause, OGS_NAS_ESM_CAUSE_PROTOCOL_ERROR_UNSPECIFIED);
-    ogs_expect(r == OGS_OK);
-    ogs_assert(r != OGS_ERROR);
-    mme_send_delete_session_or_mme_ue_context_release(mme_ue);
+    if (mme_ue->nas_eps.type == MME_EPS_TYPE_ATTACH_REQUEST) {
+        r = nas_eps_send_attach_accept(mme_ue);
+        ogs_expect(r == OGS_OK);
+        ogs_assert(r != OGS_ERROR);
+    } else if (mme_ue->nas_eps.type == MME_EPS_TYPE_TAU_REQUEST) {
+        if (mme_ue->nas_eps.update.active_flag) {
+    /*
+     * TS33.401
+     * 7 Security procedures between UE and EPS access network elements
+     * 7.2 Handling of user-related keys in E-UTRAN
+     * 7.2.7 Key handling for the TAU procedure when registered in E-UTRAN
+     *
+     * If the "active flag" is set in the TAU request message or
+     * the MME chooses to establish radio bearers when there is pending downlink
+     * UP data or pending downlink signalling, radio bearers will be established
+     * as part of the TAU procedure and a KeNB derivation is necessary.
+     */
+            ogs_kdf_kenb(mme_ue->kasme, mme_ue->ul_count.i32,
+                    mme_ue->kenb);
+            ogs_kdf_nh_enb(mme_ue->kasme, mme_ue->kenb, mme_ue->nh);
+            mme_ue->nhcc = 1;
+
+            ogs_info("[%s] KDF update(active_flag=1)", mme_ue->imsi_bcd);
+        }
+
+        /* check BCS regardless of active_flag */
+        if (mme_ue->tracking_area_update_request_presencemask &
+            OGS_NAS_EPS_TRACKING_AREA_UPDATE_REQUEST_EPS_BEARER_CONTEXT_STATUS_TYPE) {
+            ogs_info("[%s] LU reject + TAU accept(active_flag=%d, BCS)",
+                mme_ue->imsi_bcd,
+                mme_ue->nas_eps.update.active_flag);
+            mme_send_delete_session_or_tau_accept(enb_ue, mme_ue);
+        } else {
+            ogs_info("[%s] LU reject + TAU accept(active_flag=%d, No BCS)",
+                mme_ue->imsi_bcd,
+                mme_ue->nas_eps.update.active_flag);
+            mme_send_tau_accept_and_check_release(enb_ue, mme_ue);
+        }
+
+        /*
+         * When active_flag is 0, check if the P-TMSI has been updated.
+         * If the P-TMSI has changed, wait to receive the TAU Complete message
+         * from the UE before sending the UEContextReleaseCommand.
+         *
+         * This ensures that the UE has acknowledged the new P-TMSI,
+         * allowing the TAU procedure to complete successfully
+         * and maintaining synchronization between the UE and the network.
+         */
+        if (!mme_ue->nas_eps.update.active_flag &&
+            !MME_NEXT_P_TMSI_IS_AVAILABLE(mme_ue)) {
+            enb_ue->relcause.group = S1AP_Cause_PR_nas;
+            enb_ue->relcause.cause = S1AP_CauseNas_normal_release;
+            mme_send_release_access_bearer_or_ue_context_release(enb_ue);
+        }
+    } else {
+        ogs_fatal("[%s] Invalid EPS-Type[%d]",
+                mme_ue->imsi_bcd, mme_ue->nas_eps.type);
+        ogs_assert_if_reached();
+    }
 
     return;
 
@@ -223,10 +357,103 @@ error:
     return;
 }
 
+void sgsap_handle_alert_request(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
+{
+    ogs_tlv_t *root = NULL, *iter = NULL;
+    mme_ue_t *mme_ue = NULL;
+    uint8_t sgs_cause = SGSAP_SGS_CAUSE_IMSI_UNKNOWN;
+
+    char imsi_bcd[OGS_MAX_IMSI_BCD_LEN+1] = {0, };
+
+    ogs_nas_mobile_identity_imsi_t *nas_mobile_identity_imsi = NULL;
+    int nas_mobile_identity_imsi_len = 0;
+
+    ogs_assert(vlr);
+    ogs_assert(pkbuf);
+
+    ogs_warn("[SGSAP] Rx ALERT-REQUEST");
+
+    ogs_pkbuf_pull(pkbuf, 1);
+
+    root = ogs_tlv_parse_block(pkbuf->len, pkbuf->data, OGS_TLV_MODE_T1_L1);
+    if (!root) {
+        ogs_error("ogs_tlv_parse_block() failed");
+        sgs_cause = SGSAP_SGS_CAUSE_SEMANTICALLY_INCORRECT_MESSAGE;
+        goto alert_reject;
+    }
+
+    iter = root;
+    while (iter) {
+        switch (iter->type) {
+        case SGSAP_IE_IMSI_TYPE:
+            nas_mobile_identity_imsi = iter->value;
+            nas_mobile_identity_imsi_len = iter->length;
+            break;
+        default:
+            ogs_warn("Invalid Type [%d]", iter->type);
+            break;
+        }
+        iter = iter->next;
+    }
+
+    ogs_tlv_free_all(root);
+
+    if (!nas_mobile_identity_imsi) {
+        ogs_error("No IMSI");
+        sgs_cause = SGSAP_SGS_CAUSE_MISSING_MANDATORY_IE;
+        goto alert_reject;
+    }
+    if (nas_mobile_identity_imsi_len != SGSAP_IE_IMSI_LEN) {
+        ogs_error("Invalid IMSI len [%d]", nas_mobile_identity_imsi_len);
+        sgs_cause = SGSAP_SGS_CAUSE_INVALID_MANDATORY_IE;
+        goto alert_reject;
+    }
+
+    if (nas_mobile_identity_imsi->type != OGS_NAS_MOBILE_IDENTITY_IMSI) {
+        ogs_error("nas_mobile_identity_imsi->type == "
+                    "OGS_NAS_MOBILE_IDENTITY_IMSI");
+        sgs_cause = SGSAP_SGS_CAUSE_INVALID_MANDATORY_IE;
+        goto alert_reject;
+    }
+
+    ogs_nas_eps_imsi_to_bcd(nas_mobile_identity_imsi,
+                            nas_mobile_identity_imsi_len, imsi_bcd);
+    mme_ue = mme_ue_find_by_imsi_bcd(imsi_bcd);
+
+    if (!mme_ue) {
+       ogs_error("No UE(mme-ue) context");
+       sgs_cause = SGSAP_SGS_CAUSE_IMSI_UNKNOWN;
+       goto alert_reject;
+    }
+
+    /* TODO: Set NEAF flag in UE */
+
+    ogs_warn("[SGSAP] Tx ALERT-ACK");
+
+    sgsap_send_to_vlr_with_sid(
+        vlr,
+        sgsap_build_alert_ack(mme_ue),
+        0);
+    return;
+
+alert_reject:
+    ogs_debug("[SGSAP] Tx ALERT-REJECT");
+    ogs_debug("    IMSI[%s]", imsi_bcd);
+
+    sgsap_send_to_vlr_with_sid(
+        vlr,
+        sgsap_build_alert_reject(
+            nas_mobile_identity_imsi, nas_mobile_identity_imsi_len,
+            sgs_cause),
+        0);
+    return;
+}
+
 void sgsap_handle_detach_ack(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
 {
     ogs_tlv_t *root = NULL, *iter = NULL;
     mme_ue_t *mme_ue = NULL;
+    enb_ue_t *enb_ue = NULL;
 
     char imsi_bcd[OGS_MAX_IMSI_BCD_LEN+1];
 
@@ -296,7 +523,11 @@ void sgsap_handle_detach_ack(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
 
     ogs_debug("    IMSI[%s]", mme_ue->imsi_bcd);
 
-    mme_send_delete_session_or_detach(mme_ue);
+    enb_ue = enb_ue_find_by_id(mme_ue->enb_ue_id);
+    if (enb_ue)
+        mme_send_delete_session_or_detach(enb_ue, mme_ue);
+    else
+        ogs_error("ENB-S1 Context has already been removed");
 }
 
 void sgsap_handle_paging_request(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
@@ -304,14 +535,15 @@ void sgsap_handle_paging_request(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
     int r;
     ogs_tlv_t *root = NULL, *iter = NULL;
     mme_ue_t *mme_ue = NULL;
+    uint8_t sgs_cause = SGSAP_SGS_CAUSE_IMSI_UNKNOWN;
 
-    char imsi_bcd[OGS_MAX_IMSI_BCD_LEN+1];
+    char imsi_bcd[OGS_MAX_IMSI_BCD_LEN+1] = { 0, };
 
     ogs_nas_mobile_identity_imsi_t *nas_mobile_identity_imsi = NULL;
     int nas_mobile_identity_imsi_len = 0;
     ogs_nas_lai_t *lai = NULL;
     char vlr_name[SGSAP_IE_VLR_NAME_LEN] = { 0, };
-    uint8_t service_indicator = 0;
+    uint8_t *service_indicator = NULL;
 
     ogs_assert(vlr);
     ogs_assert(pkbuf);
@@ -334,15 +566,18 @@ void sgsap_handle_paging_request(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
             nas_mobile_identity_imsi_len = iter->length;
             break;
         case SGSAP_IE_VLR_NAME_TYPE:
-            ogs_assert(0 < ogs_fqdn_parse(
-                    vlr_name, iter->value,
-                    ogs_min(iter->length, SGSAP_IE_VLR_NAME_LEN)));
+            if (ogs_fqdn_parse(vlr_name, iter->value,
+                ogs_min(iter->length, SGSAP_IE_VLR_NAME_LEN)) <= 0) {
+                ogs_error("Invalid VLR-Name");
+                sgs_cause = SGSAP_SGS_CAUSE_INVALID_MANDATORY_IE;
+                goto paging_reject;
+            }
             break;
         case SGSAP_IE_LAI_TYPE:
             lai = iter->value;
             break;
         case SGSAP_IE_SERVICE_INDICATOR_TYPE:
-            service_indicator = *((uint8_t*)(iter->value));
+            service_indicator = iter->value;
             break;
         default:
             ogs_warn("Invalid Type [%d]", iter->type);
@@ -355,11 +590,19 @@ void sgsap_handle_paging_request(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
 
     if (!nas_mobile_identity_imsi) {
         ogs_error("No IMSI");
-        return;
+        sgs_cause = SGSAP_SGS_CAUSE_MISSING_MANDATORY_IE;
+        goto paging_reject;
     }
     if (nas_mobile_identity_imsi_len != SGSAP_IE_IMSI_LEN) {
         ogs_error("Invalid IMSI len [%d]", nas_mobile_identity_imsi_len);
-        return;
+        sgs_cause = SGSAP_SGS_CAUSE_INVALID_MANDATORY_IE;
+        goto paging_reject;
+    }
+
+    if (!service_indicator) {
+        ogs_error("No Service indicator");
+        sgs_cause = SGSAP_SGS_CAUSE_MISSING_MANDATORY_IE;
+        goto paging_reject;
     }
 
     if (nas_mobile_identity_imsi->type == OGS_NAS_MOBILE_IDENTITY_IMSI) {
@@ -369,56 +612,72 @@ void sgsap_handle_paging_request(mme_vlr_t *vlr, ogs_pkbuf_t *pkbuf)
         mme_ue = mme_ue_find_by_imsi_bcd(imsi_bcd);
     } else {
         ogs_error("Unknown type [%d]", nas_mobile_identity_imsi->type);
-        return;
+            sgs_cause = SGSAP_SGS_CAUSE_INVALID_MANDATORY_IE;
+            goto paging_reject;
     }
 
-    if (mme_ue) {
-        ogs_assert(service_indicator);
-        mme_ue->service_indicator = service_indicator;
+    if (!mme_ue) {
+        sgs_cause = SGSAP_SGS_CAUSE_IMSI_UNKNOWN;
+        goto paging_reject;
+    }
 
-        ogs_debug("    IMSI[%s]", mme_ue->imsi_bcd);
-        ogs_debug("    VLR_NAME[%s]", vlr_name);
-        ogs_debug("    SERVICE_INDICATOR[%d]", mme_ue->service_indicator);
+    switch (*service_indicator) {
+    case SGSAP_CS_CALL_SERVICE_INDICATOR:
+    case SGSAP_SMS_SERVICE_INDICATOR:
+        mme_ue->service_indicator = *service_indicator;
+        break;
+    default:
+        /* 3GPP TS 29.118 9.4.17: Other vals "shall not be sent in this version
+         * of the protocol. If received, shall be treated as '00000001'" */
+        mme_ue->service_indicator = SGSAP_CS_CALL_SERVICE_INDICATOR;
+        break;
+    }
 
-        if (lai) {
-            ogs_debug("    LAI[PLMN_ID:%06x,LAC:%d]",
-                        ogs_plmn_id_hexdump(&lai->nas_plmn_id), lai->lac);
-        }
+    ogs_debug("    IMSI[%s]", mme_ue->imsi_bcd);
+    ogs_debug("    VLR_NAME[%s]", vlr_name);
+    ogs_debug("    SERVICE_INDICATOR[%d]", mme_ue->service_indicator);
 
-        if (ECM_IDLE(mme_ue)) {
-            if (CS_CALL_SERVICE_INDICATOR(mme_ue)) {
-                /* UE will respond Extended Service Request in PS CNDomain*/
-                MME_STORE_PAGING_INFO(mme_ue,
-                    MME_PAGING_TYPE_CS_CALL_SERVICE, NULL);
-                r = s1ap_send_paging(mme_ue, S1AP_CNDomain_cs);
-                ogs_expect(r == OGS_OK);
-                ogs_assert(r != OGS_ERROR);
-            } else if (SMS_SERVICE_INDICATOR(mme_ue)) {
-                /* UE will respond Service Request in PS CNDomain*/
-                MME_STORE_PAGING_INFO(mme_ue,
-                    MME_PAGING_TYPE_SMS_SERVICE, NULL);
-                r = s1ap_send_paging(mme_ue, S1AP_CNDomain_ps);
-                ogs_expect(r == OGS_OK);
-                ogs_assert(r != OGS_ERROR);
-            } else
-                goto paging_reject;
+    if (lai) {
+        ogs_debug("    LAI[PLMN_ID:%06x,LAC:%d]",
+                    ogs_plmn_id_hexdump(&lai->nas_plmn_id), lai->lac);
+    }
 
+    if (ECM_IDLE(mme_ue)) {
+        if (CS_CALL_SERVICE_INDICATOR(mme_ue)) {
+            /* UE will respond Extended Service Request in CS CNDomain*/
+            MME_STORE_PAGING_INFO(mme_ue,
+                MME_PAGING_TYPE_CS_CALL_SERVICE, NULL);
+            r = s1ap_send_paging(mme_ue, S1AP_CNDomain_cs);
+            ogs_expect(r == OGS_OK);
+            ogs_assert(r != OGS_ERROR);
+        } else if (SMS_SERVICE_INDICATOR(mme_ue)) {
+            /* UE will respond Service Request in PS CNDomain*/
+            MME_STORE_PAGING_INFO(mme_ue,
+                MME_PAGING_TYPE_SMS_SERVICE, NULL);
+            r = s1ap_send_paging(mme_ue, S1AP_CNDomain_ps);
+            ogs_expect(r == OGS_OK);
+            ogs_assert(r != OGS_ERROR);
         } else {
-            MME_CLEAR_PAGING_INFO(mme_ue);
-            if (CS_CALL_SERVICE_INDICATOR(mme_ue)) {
-                r = nas_eps_send_cs_service_notification(mme_ue);
-                ogs_expect(r == OGS_OK);
-                ogs_assert(r != OGS_ERROR);
-            } else if (SMS_SERVICE_INDICATOR(mme_ue)) {
-                ogs_assert(OGS_OK ==
-                    sgsap_send_service_request(
-                        mme_ue, SGSAP_EMM_CONNECTED_MODE));
-            } else
-                goto paging_reject;
+            sgs_cause = SGSAP_SGS_CAUSE_MT_CS_FALLBACK_REJECT_BY_USER;
+            goto paging_reject;
         }
-
-        return;
+    } else {
+        MME_CLEAR_PAGING_INFO(mme_ue);
+        if (CS_CALL_SERVICE_INDICATOR(mme_ue)) {
+            r = nas_eps_send_cs_service_notification(mme_ue);
+            ogs_expect(r == OGS_OK);
+            ogs_assert(r != OGS_ERROR);
+        } else if (SMS_SERVICE_INDICATOR(mme_ue)) {
+            ogs_assert(OGS_OK ==
+                sgsap_send_service_request(
+                    mme_ue, SGSAP_EMM_CONNECTED_MODE));
+        } else {
+            sgs_cause = SGSAP_SGS_CAUSE_MT_CS_FALLBACK_REJECT_BY_USER;
+            goto paging_reject;
+        }
     }
+
+    return;
 
 paging_reject:
     ogs_debug("[SGSAP] PAGING-REJECT");
@@ -428,7 +687,7 @@ paging_reject:
         vlr,
         sgsap_build_paging_reject(
             nas_mobile_identity_imsi, nas_mobile_identity_imsi_len,
-            SGSAP_SGS_CAUSE_IMSI_UNKNOWN),
+            sgs_cause),
         0);
 }
 

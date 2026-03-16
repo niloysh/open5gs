@@ -221,7 +221,15 @@ ogs_sbi_request_t *udm_nudr_dr_build_query_subscription_provisioned(
         (char *)ogs_plmn_id_to_string(&udm_ue->guami.plmn_id, buf);
     sendmsg.h.resource.component[3] =
         (char *)OGS_SBI_RESOURCE_NAME_PROVISIONED_DATA;
-    sendmsg.h.resource.component[4] = recvmsg->h.resource.component[1];
+    if (recvmsg->h.resource.component[1]) {
+        sendmsg.h.resource.component[4] = recvmsg->h.resource.component[1];
+    } else if (recvmsg->param.num_of_dataset_names) {
+        int i;
+        for (i = 0; i < recvmsg->param.num_of_dataset_names; i++) {
+            sendmsg.param.dataset_names[i] = recvmsg->param.dataset_names[i];
+            sendmsg.param.num_of_dataset_names++;
+        }
+    }
 
     SWITCH(recvmsg->h.resource.component[1])
     CASE(OGS_SBI_RESOURCE_NAME_SM_DATA)
@@ -237,6 +245,12 @@ ogs_sbi_request_t *udm_nudr_dr_build_query_subscription_provisioned(
     CASE(OGS_SBI_RESOURCE_NAME_SMF_SELECT_DATA)
         sendmsg.h.resource.component[4] =
             (char *)OGS_SBI_RESOURCE_NAME_SMF_SELECTION_SUBSCRIPTION_DATA;
+        break;
+
+    CASE(OGS_SBI_RESOURCE_NAME_NSSAI)
+        sendmsg.h.resource.component[4] = (char *)OGS_SBI_RESOURCE_NAME_AM_DATA;
+        sendmsg.param.fields[0] = (char *)OGS_SBI_RESOURCE_NAME_NSSAI;
+        sendmsg.param.num_of_fields = 1;
         break;
 
     DEFAULT
@@ -256,7 +270,7 @@ ogs_sbi_request_t *udm_nudr_dr_build_update_smf_context(
     ogs_sbi_request_t *request = NULL;
 
     ogs_assert(sess);
-    udm_ue = sess->udm_ue;
+    udm_ue = udm_ue_find_by_id(sess->udm_ue_id);
     ogs_assert(udm_ue);
 
     memset(&message, 0, sizeof(message));
@@ -301,7 +315,7 @@ ogs_sbi_request_t *udm_nudr_dr_build_delete_smf_context(
     ogs_sbi_request_t *request = NULL;
 
     ogs_assert(sess);
-    udm_ue = sess->udm_ue;
+    udm_ue = udm_ue_find_by_id(sess->udm_ue_id);
     ogs_assert(udm_ue);
 
     memset(&message, 0, sizeof(message));
