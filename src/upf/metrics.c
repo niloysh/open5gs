@@ -316,6 +316,83 @@ int upf_metrics_free_inst_by_dnn(ogs_metrics_inst_t **inst)
     return upf_metrics_free_inst(inst, _UPF_METR_BY_DNN_MAX);
 }
 
+/* BY_SEID */
+const char *labels_seid[] = {
+    "seid"
+};
+#define UPF_METR_BY_SEID_CTR_ENTRY(_id, _name, _desc) \
+    [_id] = { \
+        .type = OGS_METRICS_METRIC_TYPE_COUNTER, \
+        .name = _name, \
+        .description = _desc, \
+        .num_labels = OGS_ARRAY_SIZE(labels_seid), \
+        .labels = labels_seid, \
+    },
+ogs_metrics_spec_t *upf_metrics_spec_by_seid[_UPF_METR_BY_SEID_MAX];
+ogs_hash_t *metrics_hash_by_seid = NULL;   /* hash table for SEID label */
+upf_metrics_spec_def_t upf_metrics_spec_def_by_seid[_UPF_METR_BY_SEID_MAX] = {
+/* Counters: */
+UPF_METR_BY_SEID_CTR_ENTRY(
+    UPF_METR_CTR_GTP_INDATAVOLUMEN3UPF_SEID,
+    "fivegs_ep_n3_gtp_indatavolumen3upf_seid",
+    "Data volume of incoming GTP data packets per seid on the N3 interface")
+UPF_METR_BY_SEID_CTR_ENTRY(
+    UPF_METR_CTR_GTP_OUTDATAVOLUMEN3UPF_SEID,
+    "fivegs_ep_n3_gtp_outdatavolumen3upf_seid",
+    "Data volume of outgoing GTP data packets per seid on the N3 interface")
+};
+void upf_metrics_init_by_seid(void);
+int upf_metrics_free_inst_by_seid(ogs_metrics_inst_t **inst);
+typedef struct upf_metric_key_by_seid_s {
+    uint8_t                     seid;
+    upf_metric_type_by_seid_t    t;
+} upf_metric_key_by_seid_t;
+
+void upf_metrics_init_by_seid(void)
+{
+    // ogs_info("init_by_seid");
+    metrics_hash_by_seid = ogs_hash_make();
+    ogs_assert(metrics_hash_by_seid);
+}
+void upf_metrics_inst_by_seid_add(uint64_t seid,
+        upf_metric_type_by_seid_t t, int val)
+{
+    // ogs_info("Incrementing metric be seid");
+    ogs_metrics_inst_t *metrics = NULL;
+    upf_metric_key_by_seid_t *seid_key;
+
+    seid_key = ogs_calloc(1, sizeof(*seid_key));
+    ogs_assert(seid_key);
+
+    seid_key->seid = seid;
+    seid_key->t = t;
+
+    metrics = ogs_hash_get(metrics_hash_by_seid,
+            seid_key, sizeof(*seid_key));
+
+    if (!metrics) {
+        char seid_str[32];
+        ogs_snprintf(seid_str, sizeof(seid_str), "%ld", seid);
+
+        metrics = ogs_metrics_inst_new(upf_metrics_spec_by_seid[t],
+                upf_metrics_spec_def_by_seid->num_labels,
+                (const char *[]){ seid_str });
+
+        ogs_assert(metrics);
+        ogs_hash_set(metrics_hash_by_seid,
+                seid_key, sizeof(*seid_key), metrics);
+    } else {
+        ogs_free(seid_key);
+    }
+
+    ogs_metrics_inst_add(metrics, val);
+}
+
+int upf_metrics_free_inst_by_seid(ogs_metrics_inst_t **inst)
+{
+    return upf_metrics_free_inst(inst, _UPF_METR_BY_SEID_MAX);
+}
+
 void upf_metrics_init(void)
 {
     ogs_metrics_context_t *ctx = ogs_metrics_self();
@@ -329,11 +406,14 @@ void upf_metrics_init(void)
             upf_metrics_spec_def_by_cause, _UPF_METR_BY_CAUSE_MAX);
     upf_metrics_init_spec(ctx, upf_metrics_spec_by_dnn,
             upf_metrics_spec_def_by_dnn, _UPF_METR_BY_DNN_MAX);
+    upf_metrics_init_spec(ctx, upf_metrics_spec_by_seid,
+            upf_metrics_spec_def_by_seid, _UPF_METR_BY_SEID_MAX);
 
     upf_metrics_init_inst_global();
     upf_metrics_init_by_qfi();
     upf_metrics_init_by_cause();
     upf_metrics_init_by_dnn();
+    upf_metrics_init_by_seid();
 }
 
 void upf_metrics_final(void)
@@ -384,6 +464,21 @@ void upf_metrics_final(void)
             //ogs_free(val);
         }
         ogs_hash_destroy(metrics_hash_by_dnn);
+    }
+    if(metrics_hash_by_seid) {
+        for (hi = ogs_hash_first(metrics_hash_by_seid); hi; hi = ogs_hash_next(hi)) {
+            upf_metric_key_by_seid_t *key =
+                (upf_metric_key_by_seid_t *)ogs_hash_this_key(hi);
+            //void *val = ogs_hash_this_val(hi);
+
+            ogs_hash_set(metrics_hash_by_seid, key, sizeof(*key), NULL);
+
+            ogs_free(key);
+            /* don't free val (metric itself) -
+             * it will be free'd by ogs_metrics_context_final() */
+            //ogs_free(val);
+        }
+        ogs_hash_destroy(metrics_hash_by_seid);
     }
 
     ogs_metrics_context_final();

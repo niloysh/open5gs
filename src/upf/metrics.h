@@ -59,6 +59,16 @@ typedef enum upf_metric_type_by_dnn_s {
 void upf_metrics_inst_by_dnn_add(
     char *dnn, upf_metric_type_by_dnn_t t, int val);
 
+/* BY SEID */
+typedef enum upf_metic_type_by_seid_s {
+    UPF_METR_CTR_GTP_INDATAVOLUMEN3UPF_SEID = 0,
+    UPF_METR_CTR_GTP_OUTDATAVOLUMEN3UPF_SEID,
+    _UPF_METR_BY_SEID_MAX,
+} upf_metric_type_by_seid_t;
+
+void upf_metrics_inst_by_seid_add(
+    uint64_t seid, upf_metric_type_by_seid_t t, int val);
+
 void upf_metrics_init(void);
 void upf_metrics_final(void);
 

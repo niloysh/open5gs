@@ -223,10 +223,12 @@ static void _gtpv1_tun_recv_common_cb(
      * It should not be used on the UPF/SGW-U data plane
      * until this issue is resolved.
      */
-#if 0
+#if 1
     upf_metrics_inst_global_inc(UPF_METR_GLOB_CTR_GTP_OUTDATAPKTN3UPF);
     upf_metrics_inst_by_qfi_add(pdr->qer->qfi,
         UPF_METR_CTR_GTP_OUTDATAVOLUMEQOSLEVELN3UPF, recvbuf->len);
+    upf_metrics_inst_by_seid_add(sess->upf_n4_seid, UPF_METR_CTR_GTP_OUTDATAVOLUMEN3UPF_SEID, recvbuf->len);
+
 #endif
 
     if (report.type.downlink_data_report) {
@@ -390,7 +392,7 @@ static void _gtpv1_u_recv_cb(short when, ogs_socket_t fd, void *data)
          * It should not be used on the UPF/SGW-U data plane
          * until this issue is resolved.
          */
-#if 0
+#if 1
         upf_metrics_inst_global_inc(UPF_METR_GLOB_CTR_GTP_INDATAPKTN3UPF);
         upf_metrics_inst_by_qfi_add(header_desc.qos_flow_identifier,
                 UPF_METR_CTR_GTP_INDATAVOLUMEQOSLEVELN3UPF, pkbuf->len);
@@ -495,6 +497,8 @@ static void _gtpv1_u_recv_cb(short when, ogs_socket_t fd, void *data)
 
         sess = UPF_SESS(pdr->sess);
         ogs_assert(sess);
+        
+        upf_metrics_inst_by_seid_add(sess->upf_n4_seid, UPF_METR_CTR_GTP_INDATAVOLUMEN3UPF_SEID, pkbuf->len);
 
         far = pdr->far;
         ogs_assert(far);

@@ -406,6 +406,110 @@ int smf_metrics_free_inst_by_5qi(ogs_metrics_inst_t **inst)
     return smf_metrics_free_inst(inst, _SMF_METR_BY_5QI_MAX);
 }
 
+/* BY SLICE and SEID */
+const char *labels_seid[] = {
+    "plmnid",
+    "snssai",
+    "seid"
+};
+
+#define SMF_METR_BY_SEID_GAUGE_ENTRY(_id, _name, _desc) \
+    [_id] = { \
+        .type = OGS_METRICS_METRIC_TYPE_GAUGE, \
+        .name = _name, \
+        .description = _desc, \
+        .num_labels = OGS_ARRAY_SIZE(labels_seid), \
+        .labels = labels_seid, \
+    },
+ogs_metrics_spec_t *smf_metrics_spec_by_seid[_SMF_METR_BY_SEID_MAX];
+ogs_hash_t *metrics_hash_by_seid = NULL;   /* hash table for SEID label */
+smf_metrics_spec_def_t smf_metrics_spec_def_by_seid[_SMF_METR_BY_SEID_MAX] = {
+/* Gauges: */
+SMF_METR_BY_SEID_GAUGE_ENTRY(
+    SMF_METR_GAUGE_SM_SEID_SESSIONNBR,
+    "fivegs_smffunction_sm_seid_session",
+    "Number of active sessions per SEID")
+};
+void smf_metrics_init_by_seid(void);
+int smf_metrics_free_inst_by_seid(ogs_metrics_inst_t **inst);
+typedef struct smf_metric_key_by_seid_s {
+    ogs_plmn_id_t               plmn_id;
+    ogs_s_nssai_t               snssai;
+    uint64_t                    seid;
+    smf_metric_type_by_seid_t    t;
+} smf_metric_key_by_seid_t;
+
+void smf_metrics_init_by_seid(void)
+{
+    metrics_hash_by_seid = ogs_hash_make();
+    ogs_assert(metrics_hash_by_seid);
+}
+void smf_metrics_inst_by_seid_add(ogs_plmn_id_t *plmn,
+        ogs_s_nssai_t *snssai, uint64_t seid,
+        smf_metric_type_by_seid_t t, int val)
+{
+    ogs_metrics_inst_t *metrics = NULL;
+    smf_metric_key_by_seid_t *seid_key;
+
+    seid_key = ogs_calloc(1, sizeof(*seid_key));
+    ogs_assert(seid_key);
+
+    if (plmn) {
+        seid_key->plmn_id = *plmn;
+    }
+
+    if (snssai) {
+        seid_key->snssai = *snssai;
+    } else {
+        seid_key->snssai.sst = 0;
+        seid_key->snssai.sd.v = OGS_S_NSSAI_NO_SD_VALUE;
+    }
+
+    seid_key->seid = seid;
+    seid_key->t = t;
+
+    metrics = ogs_hash_get(metrics_hash_by_seid,
+            seid_key, sizeof(*seid_key));
+
+    if (!metrics) {
+        char plmn_id[OGS_PLMNIDSTRLEN] = "";
+        char *s_nssai = NULL;
+        char seid_str[32];
+
+        if (plmn) {
+            ogs_plmn_id_to_string(plmn, plmn_id);
+        }
+
+        if (snssai) {
+            s_nssai = ogs_sbi_s_nssai_to_string(snssai);
+        } else {
+            s_nssai = ogs_strdup("");
+        }
+
+        ogs_snprintf(seid_str, sizeof(seid_str), "%ld", seid);
+
+        metrics = ogs_metrics_inst_new(smf_metrics_spec_by_seid[t],
+                smf_metrics_spec_def_by_seid->num_labels,
+                (const char *[]){ plmn_id, s_nssai, seid_str });
+
+        ogs_assert(metrics);
+        ogs_hash_set(metrics_hash_by_seid,
+                seid_key, sizeof(*seid_key), metrics);
+
+        if (s_nssai)
+            ogs_free(s_nssai);
+    } else {
+        ogs_free(seid_key);
+    }
+
+    ogs_metrics_inst_add(metrics, val);
+}
+
+int smf_metrics_free_inst_by_seid(ogs_metrics_inst_t **inst)
+{
+    return smf_metrics_free_inst(inst, _SMF_METR_BY_SEID_MAX);
+}
+
 /* BY CAUSE */
 const char *labels_cause[] = {
     "cause"
@@ -498,12 +602,15 @@ void smf_metrics_init(void)
             smf_metrics_spec_def_by_slice, _SMF_METR_BY_SLICE_MAX);
     smf_metrics_init_spec(ctx, smf_metrics_spec_by_5qi,
             smf_metrics_spec_def_by_5qi, _SMF_METR_BY_5QI_MAX);
+    smf_metrics_init_spec(ctx, smf_metrics_spec_by_seid,
+            smf_metrics_spec_def_by_seid, _SMF_METR_BY_SEID_MAX);
     smf_metrics_init_spec(ctx, smf_metrics_spec_by_cause,
             smf_metrics_spec_def_by_cause, _SMF_METR_BY_CAUSE_MAX);
 
     smf_metrics_init_inst_global();
     smf_metrics_init_by_slice();
     smf_metrics_init_by_5qi();
+    smf_metrics_init_by_seid();
     smf_metrics_init_by_cause();
 }
 
@@ -540,6 +647,21 @@ void smf_metrics_final(void)
             //ogs_free(val);
         }
         ogs_hash_destroy(metrics_hash_by_5qi);
+    }
+    if (metrics_hash_by_seid) {
+        for (hi = ogs_hash_first(metrics_hash_by_seid); hi; hi = ogs_hash_next(hi)) {
+            smf_metric_key_by_seid_t *key =
+                (smf_metric_key_by_seid_t *)ogs_hash_this_key(hi);
+            //void *val = ogs_hash_this_val(hi);
+
+            ogs_hash_set(metrics_hash_by_seid, key, sizeof(*key), NULL);
+
+            ogs_free(key);
+            /* don't free val (metric itself) -
+             * it will be free'd by ogs_metrics_context_final() */
+            //ogs_free(val);
+        }
+        ogs_hash_destroy(metrics_hash_by_seid);
     }
     if (metrics_hash_by_cause) {
         for (hi = ogs_hash_first(metrics_hash_by_cause); hi; hi = ogs_hash_next(hi)) {
