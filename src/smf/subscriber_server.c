@@ -66,9 +66,8 @@ void parse_supi(const char *supi, char **ue_Ip, int *seid) {
 RSPX HTTP_build_response_JSON(const char *message) {
   struct MHD_Response *response;
   fatemeh_log("the enum is %d\n",MHD_RESPMEM_PERSISTENT);
-  void * fa = (void *)message;
-  int x = strlen(message);
-  response = MHD_create_response_from_buffer_static(x, fa);
+  response = MHD_create_response_from_buffer(
+      strlen(message), (void *)message, MHD_RESPMEM_PERSISTENT);
 
 
   if (!response)
