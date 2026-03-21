@@ -1,0 +1,193 @@
+services:
+  mongodb:
+    image: mongo
+    container_name: open5gs-mongodb
+    ports:
+      - "27017:27017"
+    restart: unless-stopped
+    volumes:
+      - mongodb:/data/db
+      - ../docs/assets/webui/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "mongodb://localhost/open5gs", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  webui:
+    build:
+      context: ..
+      dockerfile: docker/webui/Dockerfile
+    image: ${USER:-open5gs}/open5gs-webui:local
+    container_name: open5gs-webui
+    command: ["npm", "run", "dev"]
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "9999:9999"
+    environment:
+      - DB_URI=mongodb://mongodb/open5gs
+      - WAIT_HOSTS=mongodb:27017
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+
+  open5gs-aio:
+    build:
+      context: ..
+      dockerfile: docker-aio/Dockerfile
+      args:
+        IMAGE_VERSION: ${IMAGE_VERSION:-local}
+    image: ${USER:-open5gs}/open5gs-aio:${IMAGE_VERSION:-local}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    container_name: open5gs-aio
+    command: ["/bin/bash", "/open5gs-aio/config/init.sh"]
+    environment:
+      - DEBUG_MODE=${DEBUG_MODE:-true}
+      - CONFIG_PATH=/open5gs-aio/config
+      - DB_URI=mongodb://mongodb/open5gs
+    ports:
+      - "9090:9090"
+      - "38412:38412/sctp"
+      - "4355:4355"
+    volumes:
+      - ./config:/open5gs-aio/config:ro
+    privileged: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -x open5gs-amfd >/dev/null && pgrep -x open5gs-smfd >/dev/null && pgrep -x open5gs-upfd >/dev/null && ss -ltn | grep -q ':4355'"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+    networks:
+      default:
+      n2network:
+        ipv4_address: 10.10.2.2
+      n3network:
+        ipv4_address: 10.10.3.2
+      n4network:
+        ipv4_address: 10.10.4.2
+
+  subscriber-init:
+    image: mongo
+    container_name: open5gs-subscriber-init
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      open5gs-aio:
+        condition: service_healthy
+    command: ["mongosh", "--quiet", "mongodb://mongodb/open5gs", "/seed/add-subscribers.js"]
+    volumes:
+      - ./seed:/seed:ro
+    restart: "no"
+
+  ees-sink-test:
+    image: python:3.11-alpine
+    container_name: ees-sink-test
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        python - <<'PY'
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        BODY_PATH = '/tmp/callback_body.log'
+        ACCESS_PATH = '/tmp/callback_access.log'
+        PORT = 9998
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get('Content-Length', '0'))
+                body = self.rfile.read(length).decode('utf-8', errors='replace')
+                with open(BODY_PATH, 'a', encoding='utf-8') as f:
+                    f.write(body)
+                    f.write('\n---\n')
+                with open(ACCESS_PATH, 'a', encoding='utf-8') as f:
+                    f.write(f'"{self.command} {self.path} {self.request_version}" 204 -\n')
+                self.send_response(204)
+                self.end_headers()
+
+            def log_message(self, format, *args):
+                pass
+
+        HTTPServer(('0.0.0.0', PORT), Handler).serve_forever()
+        PY
+    restart: unless-stopped
+
+  ueransim-gnb:
+    image: ghcr.io/niloysh/ueransim:latest
+    container_name: ueransim-gnb
+    depends_on:
+      subscriber-init:
+        condition: service_completed_successfully
+    command: ["/bin/bash", "-lc", "mkdir -p /tmp/ueransim && sleep ${GNB_START_DELAY:-5}; /ueransim/nr-gnb -c /config/open5gs-gnb.yaml 2>&1 | tee /tmp/ueransim/gnb.log"]
+    volumes:
+      - ./ueransim:/config:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q 'NG Setup procedure is successful' /tmp/ueransim/gnb.log"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks:
+      default:
+      n2network:
+        ipv4_address: 10.10.2.10
+      n3network:
+        ipv4_address: 10.10.3.10
+
+  ueransim-ue1:
+    image: ghcr.io/niloysh/ueransim:latest
+    container_name: ueransim-ue1
+    depends_on:
+      ueransim-gnb:
+        condition: service_healthy
+    command: ["/bin/bash", "-lc", "sleep ${UE_START_DELAY:-5}; exec /ueransim/nr-ue -c /config/ue1.yaml"]
+    volumes:
+      - ./ueransim:/config:ro
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    restart: unless-stopped
+
+  ueransim-ue2:
+    image: ghcr.io/niloysh/ueransim:latest
+    container_name: ueransim-ue2
+    depends_on:
+      ueransim-gnb:
+        condition: service_healthy
+    command: ["/bin/bash", "-lc", "sleep ${UE_START_DELAY:-5}; exec /ueransim/nr-ue -c /config/ue2.yaml"]
+    volumes:
+      - ./ueransim:/config:ro
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge
+  n2network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.2.0/24
+  n3network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.3.0/24
+  n4network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.4.0/24
+
+volumes:
+  mongodb: {}
